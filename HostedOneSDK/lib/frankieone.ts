@@ -30,6 +30,7 @@ export async function generateHostedOnboardingUrl(options: {
     consent: true,
     oneSDKFlowId: options.flowId || 'idv',
     sendSMS: false,
+    serviceName: 'KYC',
   };
 
   if (options.entityId) {
