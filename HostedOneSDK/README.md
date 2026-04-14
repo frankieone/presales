@@ -2,22 +2,29 @@
 
 A self-hosted onboarding application powered by FrankieOne's OneSDK. Generates verification links that can be sent to customers for identity verification.
 
-## Quick Start (Docker)
+## Prerequisites
+
+- **Docker** and **Docker Compose** must be installed. See [Get Docker](https://docs.docker.com/get-docker/).
+- **FrankieOne API credentials** - you will need your Customer ID, Customer Child ID, and API Key. Contact your FrankieOne representative if you don't have these.
+
+## Quick Start
 
 ### 1. Clone the repository
 
 ```bash
-git clone <repo-url>
-cd hosted-onesdk
+git clone https://github.com/frankieone/presales.git
+cd presales/HostedOneSDK
 ```
 
-### 2. Configure environment
+### 2. Configure your API credentials
+
+> **IMPORTANT:** The app will not work without valid FrankieOne credentials.
 
 ```bash
 cp env.example .env
 ```
 
-Edit `.env` with your FrankieOne credentials:
+Open `.env` in a text editor and replace the placeholder values with your actual credentials:
 
 | Variable | Description |
 |---|---|
@@ -27,13 +34,13 @@ Edit `.env` with your FrankieOne credentials:
 | `FRANKIE_API_KEY` | Your FrankieOne API key |
 | `NEXT_PUBLIC_BASE_URL` | Public URL where this app is accessible (e.g. `https://verify.yourcompany.com`) |
 
-### 3. Run with Docker Compose
+### 3. Build and run
 
 ```bash
 docker compose up -d
 ```
 
-The app will be available at `http://localhost:3000`.
+The app will be available at **http://localhost:3000**.
 
 To use a different port:
 
@@ -41,7 +48,13 @@ To use a different port:
 PORT=8080 docker compose up -d
 ```
 
-### 4. Run with Docker directly
+To stop:
+
+```bash
+docker compose down
+```
+
+### Alternative: Run with Docker directly (without Compose)
 
 ```bash
 docker build -t hosted-onesdk .
@@ -49,6 +62,8 @@ docker run -p 3000:3000 --env-file .env hosted-onesdk
 ```
 
 ## Local Development (without Docker)
+
+Requires Node.js 20+.
 
 ```bash
 npm install
