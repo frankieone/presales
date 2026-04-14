@@ -506,7 +506,7 @@ export default function VerifyPage() {
                 />
               </div>
               <button
-                onClick={advancePreSlide}
+                onClick={() => advancePreSlide()}
                 disabled={!answers.first_name?.trim()}
                 className="w-full py-4 bg-brand-600 text-white font-semibold rounded-2xl disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-[0.98]"
               >
