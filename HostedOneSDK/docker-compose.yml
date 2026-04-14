@@ -2,7 +2,7 @@ services:
   hosted-onesdk:
     build: .
     ports:
-      - "${PORT:-3000}:3000"
+      - "${PORT:-4568}:3000"
     env_file:
       - .env
     environment:
