@@ -66,15 +66,42 @@ export default function AdminPage() {
 
       <main className="max-w-4xl mx-auto px-6 py-8">
         <div className="max-w-lg mx-auto space-y-6">
-          <div className="rounded-2xl bg-blue-50 border border-blue-200 px-5 py-4 text-left">
-            <h3 className="text-sm font-bold text-blue-800 mb-2">Example Implementation</h3>
-            <p className="text-sm text-blue-700">
-              This is an example implementation of the FrankieOne APIs for v2. It demonstrates
-              capturing entity details and attaching them via key-value pairs, allowing the entity
-              to either verify their identity through ID verification (IDV) or manually add details
-              using an alternative ID, followed by additional form capture. It is designed to show
-              how you can build your own experience on either side of the FrankieOne IDV process
-              and then submit all of the data to FrankieOne for compliance checks to run.
+          <div className="rounded-2xl bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 px-6 py-5 text-left">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center shrink-0">
+                <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <h3 className="text-sm font-bold text-blue-900">FrankieOne v2 API — Example Implementation</h3>
+            </div>
+            <p className="text-sm text-blue-700 mb-4">
+              This app demonstrates how to build a custom onboarding experience around FrankieOne&apos;s hosted IDV process and v2 APIs. It showcases:
+            </p>
+            <ul className="space-y-2.5 mb-4">
+              <li className="flex gap-2.5 text-sm text-blue-700">
+                <span className="shrink-0 w-5 h-5 rounded-full bg-blue-100 flex items-center justify-center text-xs font-bold text-blue-600 mt-0.5">1</span>
+                <span><strong className="text-blue-800">Pre-screening forms</strong> — Capturing entity details (occupation, source of funds, citizenship) and attaching them as key-value pair custom attributes</span>
+              </li>
+              <li className="flex gap-2.5 text-sm text-blue-700">
+                <span className="shrink-0 w-5 h-5 rounded-full bg-blue-100 flex items-center justify-center text-xs font-bold text-blue-600 mt-0.5">2</span>
+                <span><strong className="text-blue-800">Dual verification paths</strong> — Letting the customer choose between ID verification (photo ID + selfie) or manually entering an alternative document (Medicare card, birth certificate)</span>
+              </li>
+              <li className="flex gap-2.5 text-sm text-blue-700">
+                <span className="shrink-0 w-5 h-5 rounded-full bg-blue-100 flex items-center justify-center text-xs font-bold text-blue-600 mt-0.5">3</span>
+                <span><strong className="text-blue-800">Step-up verification</strong> — If an alternative document check fails, the customer is prompted to complete ID verification instead, demonstrating an enhanced &ldquo;step up&rdquo; check</span>
+              </li>
+              <li className="flex gap-2.5 text-sm text-blue-700">
+                <span className="shrink-0 w-5 h-5 rounded-full bg-blue-100 flex items-center justify-center text-xs font-bold text-blue-600 mt-0.5">4</span>
+                <span><strong className="text-blue-800">Workflow results</strong> — Fetching and displaying the outcome of compliance checks (pass, review, or fail) with appropriate messaging</span>
+              </li>
+              <li className="flex gap-2.5 text-sm text-blue-700">
+                <span className="shrink-0 w-5 h-5 rounded-full bg-blue-100 flex items-center justify-center text-xs font-bold text-blue-600 mt-0.5">5</span>
+                <span><strong className="text-blue-800">Post-verification capture</strong> — Collecting additional information after the IDV process, showing how to build your own experience on either side of the FrankieOne flow</span>
+              </li>
+            </ul>
+            <p className="text-xs text-blue-500">
+              All data is submitted to FrankieOne via the v2 API for compliance checks to run.
             </p>
           </div>
 
