@@ -66,6 +66,18 @@ export default function AdminPage() {
 
       <main className="max-w-4xl mx-auto px-6 py-8">
         <div className="max-w-lg mx-auto space-y-6">
+          <div className="rounded-2xl bg-blue-50 border border-blue-200 px-5 py-4 text-left">
+            <h3 className="text-sm font-bold text-blue-800 mb-2">Example Implementation</h3>
+            <p className="text-sm text-blue-700">
+              This is an example implementation of the FrankieOne APIs for v2. It demonstrates
+              capturing entity details and attaching them via key-value pairs, allowing the entity
+              to either verify their identity through ID verification (IDV) or manually add details
+              using an alternative ID, followed by additional form capture. It is designed to show
+              how you can build your own experience on either side of the FrankieOne IDV process
+              and then submit all of the data to FrankieOne for compliance checks to run.
+            </p>
+          </div>
+
           <div className="bg-white rounded-2xl shadow-sm border border-brand-100 p-6 text-center">
             <h2 className="text-lg font-bold text-brand-900 mb-2">Generate Onboarding Link</h2>
             <p className="text-sm text-gray-500 mb-6">

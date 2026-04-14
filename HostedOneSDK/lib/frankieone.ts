@@ -204,6 +204,20 @@ export async function executeWorkflow(entityId: string, workflowName: string, se
   return { data, status: res.status };
 }
 
+export async function getWorkflowResult(entityId: string, serviceName = 'KYC') {
+  // Get the service profile to find the latest workflow execution
+  const res = await fetch(
+    `${API_BASE}/v2/individuals/${entityId}/serviceprofiles/${serviceName}`,
+    {
+      method: 'GET',
+      headers: getHeaders(),
+    },
+  );
+
+  const data = await res.json();
+  return { data, status: res.status };
+}
+
 export async function updateEntityCustomAttributes(
   entityId: string,
   attributes: Record<string, string>

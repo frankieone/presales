@@ -10,7 +10,9 @@ interface SessionData {
   status: string;
 }
 
-type Phase = 'loading' | 'expired' | 'not_found' | 'pre' | 'doc_choice' | 'alt_doc_choice' | 'alt_doc_state' | 'alt_doc_upload' | 'alt_doc_form' | 'alt_personal' | 'idv_info' | 'idv_consent' | 'idv' | 'post' | 'complete';
+type Phase = 'loading' | 'expired' | 'not_found' | 'pre' | 'doc_choice' | 'alt_doc_choice' | 'alt_doc_state' | 'alt_doc_upload' | 'alt_doc_form' | 'alt_personal' | 'idv_info' | 'idv_consent' | 'idv' | 'post' | 'checking_result' | 'result' | 'idv_fallback' | 'complete';
+
+type WorkflowOutcome = 'pass' | 'review' | 'fail' | null;
 
 type AltDocType = 'medicare' | 'birth_cert' | null;
 
@@ -148,6 +150,11 @@ export default function VerifyPage() {
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
 
+  // Workflow result state
+  const [workflowOutcome, setWorkflowOutcome] = useState<WorkflowOutcome>(null);
+  const [workflowDetails, setWorkflowDetails] = useState<string>('');
+  const [cameFromAltFlow, setCameFromAltFlow] = useState(false);
+
   // Alt flow state
   const [altDocType, setAltDocType] = useState<AltDocType>(null);
   const [altState, setAltState] = useState('');
@@ -231,7 +238,13 @@ export default function VerifyPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ postAnswers }),
       });
-      setPhase('complete');
+      // If we already have a workflow outcome from alt flow, show result
+      if (workflowOutcome) {
+        setPhase('result');
+      } else {
+        // For IDV flow, fetch the workflow result
+        fetchWorkflowResult();
+      }
       setSubmitting(false);
     }
   }
@@ -369,7 +382,27 @@ export default function VerifyPage() {
 
       const data = await res.json();
       if (res.ok) {
-        setPhase('post');
+        setCameFromAltFlow(true);
+        // Check workflow result
+        const wfResult = data.workflowResult?.workflowResult;
+        if (wfResult) {
+          const status = wfResult.status;
+          if (status === 'PASS' || status === 'CLEAR' || status === 'APPROVED') {
+            setWorkflowOutcome('pass');
+            setWorkflowDetails('Your identity has been verified successfully.');
+            setPhase('post');
+          } else if (status === 'FAIL' || status === 'REJECTED' || status === 'BLOCKED') {
+            setWorkflowOutcome('fail');
+            setWorkflowDetails('We were unable to verify your identity with the document provided.');
+            setPhase('idv_fallback');
+          } else {
+            setWorkflowOutcome('review');
+            setWorkflowDetails('Your verification is being reviewed.');
+            setPhase('post');
+          }
+        } else {
+          setPhase('post');
+        }
       } else {
         console.error('Create entity failed:', JSON.stringify(data, null, 2));
         alert(`Verification failed: ${data.error || 'Unknown error'}`);
@@ -387,6 +420,40 @@ export default function VerifyPage() {
     }).then(() => {
       setTimeout(() => setPhase('post'), 2000);
     });
+  }
+
+  async function fetchWorkflowResult() {
+    setPhase('checking_result');
+    // Poll a few times since the workflow may still be running
+    for (let i = 0; i < 10; i++) {
+      try {
+        const res = await fetch('/api/workflow-result', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionId }),
+        });
+        const data = await res.json();
+
+        if (data.executionState === 'COMPLETED') {
+          const status = data.status;
+          if (status === 'PASS' || status === 'CLEAR' || status === 'APPROVED') {
+            setWorkflowOutcome('pass');
+          } else if (status === 'FAIL' || status === 'REJECTED' || status === 'BLOCKED') {
+            setWorkflowOutcome('fail');
+          } else {
+            setWorkflowOutcome('review');
+          }
+          setPhase('result');
+          return;
+        }
+      } catch {
+        // continue polling
+      }
+      await new Promise((r) => setTimeout(r, 3000));
+    }
+    // If we timed out, show review
+    setWorkflowOutcome('review');
+    setPhase('result');
   }
 
   // Progress calculation
@@ -1252,6 +1319,84 @@ export default function VerifyPage() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* IDV fallback — alt doc failed, offer to try IDV */}
+      {phase === 'idv_fallback' && (
+        <div className="flex-1 flex items-center justify-center px-6">
+          <div className="text-center max-w-sm">
+            <img src="/failure.png" alt="Verification failed" className="w-32 h-32 mx-auto mb-6 object-contain" />
+            <h1 className="text-2xl font-bold text-gray-900 mb-3">We couldn&apos;t verify that document</h1>
+            <p className="text-gray-500 mb-2">
+              {workflowDetails}
+            </p>
+            <p className="text-gray-500 mb-8">
+              Would you like to try verifying with a photo ID instead? You&apos;ll be guided through a quick process to scan your driver&apos;s licence or passport.
+            </p>
+            <button
+              onClick={() => {
+                setCameFromAltFlow(false);
+                setWorkflowOutcome(null);
+                setPhase('idv_info');
+              }}
+              className="w-full py-4 bg-brand-600 text-white font-semibold rounded-2xl transition-all active:scale-[0.98] mb-3"
+            >
+              Verify with photo ID
+            </button>
+            <button
+              onClick={() => setPhase('complete')}
+              className="w-full py-3 text-sm text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              Skip for now
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Checking result spinner */}
+      {phase === 'checking_result' && (
+        <div className="flex-1 flex items-center justify-center px-6">
+          <div className="text-center max-w-sm">
+            <div className="w-16 h-16 mx-auto mb-6 rounded-full border-4 border-brand-200 border-t-brand-600 animate-spin" />
+            <h1 className="text-xl font-bold text-gray-900 mb-2">Checking your results</h1>
+            <p className="text-gray-500 text-sm">This will only take a moment...</p>
+          </div>
+        </div>
+      )}
+
+      {/* Workflow result screen */}
+      {phase === 'result' && (
+        <div className="flex-1 flex items-center justify-center px-6">
+          <div className="text-center max-w-sm">
+            {workflowOutcome === 'pass' && (
+              <>
+                <img src="/success.png" alt="Verification passed" className="w-32 h-32 mx-auto mb-6 object-contain" />
+                <h1 className="text-2xl font-bold text-green-800 mb-3">Verification Successful</h1>
+                <p className="text-gray-500 mb-8">
+                  Your identity has been verified successfully. Thank you for completing your onboarding with ACME Ltd.
+                </p>
+              </>
+            )}
+            {workflowOutcome === 'review' && (
+              <>
+                <img src="/review.png" alt="Under review" className="w-32 h-32 mx-auto mb-6 object-contain" />
+                <h1 className="text-2xl font-bold text-amber-700 mb-3">Under Review</h1>
+                <p className="text-gray-500 mb-8">
+                  Your verification is being reviewed by our team. We&apos;ll be in touch once the review is complete. This usually takes 1-2 business days.
+                </p>
+              </>
+            )}
+            {workflowOutcome === 'fail' && (
+              <>
+                <img src="/failure.png" alt="Verification failed" className="w-32 h-32 mx-auto mb-6 object-contain" />
+                <h1 className="text-2xl font-bold text-red-800 mb-3">Verification Unsuccessful</h1>
+                <p className="text-gray-500 mb-8">
+                  We were unable to verify your identity at this time. Please contact ACME Ltd support for further assistance.
+                </p>
+              </>
+            )}
+          </div>
         </div>
       )}
 
