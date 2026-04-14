@@ -11,12 +11,14 @@ interface GeneratedLink {
 export default function AdminPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [missingCreds, setMissingCreds] = useState<string[] | null>(null);
   const [links, setLinks] = useState<GeneratedLink[]>([]);
   const [copied, setCopied] = useState<string | null>(null);
 
   async function handleGenerate() {
     setLoading(true);
     setError('');
+    setMissingCreds(null);
 
     try {
       const res = await fetch('/api/generate-link', {
@@ -28,6 +30,10 @@ export default function AdminPage() {
       const data = await res.json();
 
       if (!res.ok) {
+        if (data.error === 'missing_credentials') {
+          setMissingCreds(data.missing);
+          return;
+        }
         setError(data.error || 'Failed to generate link');
         return;
       }
@@ -65,6 +71,26 @@ export default function AdminPage() {
             <p className="text-sm text-gray-500 mb-6">
               Create a new verification link to send to a customer.
             </p>
+
+            {missingCreds && (
+              <div className="rounded-xl bg-amber-50 border border-amber-200 px-5 py-4 text-left mb-4">
+                <h3 className="text-sm font-bold text-amber-800 mb-2">API Credentials Not Configured</h3>
+                <p className="text-sm text-amber-700 mb-3">
+                  The following environment variables are missing or still set to placeholder values:
+                </p>
+                <ul className="text-xs font-mono bg-amber-100 rounded-lg px-3 py-2 mb-3 space-y-1">
+                  {missingCreds.map((key) => (
+                    <li key={key} className="text-amber-900">{key}</li>
+                  ))}
+                </ul>
+                <p className="text-sm font-semibold text-amber-800 mb-1">To fix this:</p>
+                <ol className="text-sm text-amber-700 list-decimal list-inside space-y-1">
+                  <li>Open the <code className="text-xs bg-amber-100 px-1 py-0.5 rounded">.env</code> file in the project root</li>
+                  <li>Replace the placeholder values with your FrankieOne API credentials</li>
+                  <li>Restart the container: <code className="text-xs bg-amber-100 px-1 py-0.5 rounded">docker compose down &amp;&amp; docker compose up -d</code></li>
+                </ol>
+              </div>
+            )}
 
             {error && (
               <div className="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700 mb-4">

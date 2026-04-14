@@ -1,10 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
-import { generateHostedOnboardingUrl } from '@/lib/frankieone';
+import { generateHostedOnboardingUrl, getMissingCredentials } from '@/lib/frankieone';
 import { createSession } from '@/lib/sessions';
 
 export async function POST(_req: NextRequest) {
   try {
+    const missing = getMissingCredentials();
+    if (missing.length > 0) {
+      return NextResponse.json(
+        {
+          error: 'missing_credentials',
+          missing,
+          message: `FrankieOne API credentials are not configured. Missing: ${missing.join(', ')}`,
+        },
+        { status: 503 }
+      );
+    }
+
     const result = await generateHostedOnboardingUrl({
       flowId: 'idv',
     });

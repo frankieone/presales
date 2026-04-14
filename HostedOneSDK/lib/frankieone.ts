@@ -3,6 +3,13 @@ const CUSTOMER_ID = process.env.FRANKIE_CUSTOMER_ID || '';
 const CUSTOMER_CHILD_ID = process.env.FRANKIE_CUSTOMER_CHILD_ID || '';
 const API_KEY = process.env.FRANKIE_API_KEY || '';
 
+export function getMissingCredentials(): string[] {
+  const missing: string[] = [];
+  if (!CUSTOMER_ID || CUSTOMER_ID === 'your-customer-id') missing.push('FRANKIE_CUSTOMER_ID');
+  if (!API_KEY || API_KEY === 'your-api-key') missing.push('FRANKIE_API_KEY');
+  return missing;
+}
+
 function getHeaders(): Record<string, string> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
