@@ -1,0 +1,8 @@
+node_modules
+.next
+.env*
+!.env.example
+.DS_Store
+*.pem
+npm-debug.log*
+.git
