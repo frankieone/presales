@@ -3,7 +3,7 @@ import { executeOrganizationWorkflow, lookupOrganizations, getOrganizationWithPr
 import { MOCK_ABN, MOCK_ACN, MOCK_OWNERSHIP_RESPONSE } from '@/lib/mock-ownership';
 import type { AustralianOwnershipResponse, AustralianOfficeholder, BlockingEntity, OwnershipShareholder } from '@/types/business';
 
-const DEFAULT_KYB_WORKFLOW = process.env.FRANKIE_KYB_WORKFLOW_NAME || 'AUS-Organization-Ownership';
+const DEFAULT_KYB_WORKFLOW = process.env.FRANKIE_KYB_WORKFLOW_NAME || 'GLB-Organization-Ownership';
 
 export async function POST(req: NextRequest) {
   try {
@@ -104,7 +104,7 @@ export async function POST(req: NextRequest) {
       data = result.data;
       status = result.status;
 
-      console.log('[Ownership] Workflow status:', status, 'Keys:', JSON.stringify(Object.keys(data || {})));
+      console.log('[Ownership] Workflow status:', status, 'Keys:', JSON.stringify(Object.keys(data || {})), 'Error:', data?.errorMsg || data?.errorCode || 'none');
       // If org is missing enrichment data, check workflowStepResults supplementaryData
       const _org = data?.organization || {};
       const hasShareholders = (_org.shareholders?.length || 0) > 0;

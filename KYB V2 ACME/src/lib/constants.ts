@@ -8,7 +8,7 @@ export const FRANKIE_CUSTOMER_CHILD_ID = process.env.FRANKIE_CUSTOMER_CHILD_ID |
 
 // v2 workflow names
 export const DEFAULT_WORKFLOW_NAME = process.env.FRANKIE_WORKFLOW_NAME || 'AUS-Basic2V-TwoPlus';
-export const DEFAULT_KYB_WORKFLOW_NAME = process.env.FRANKIE_KYB_WORKFLOW_NAME || 'AUS-Organization-Ownership';
+export const DEFAULT_KYB_WORKFLOW_NAME = process.env.FRANKIE_KYB_WORKFLOW_NAME || 'GLB-Organization-Ownership';
 
 // v2 endpoints
 export const V2_ENDPOINTS = {
