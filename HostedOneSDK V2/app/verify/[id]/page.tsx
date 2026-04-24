@@ -155,6 +155,7 @@ export default function VerifyPage() {
   const [altPhotoPreview, setAltPhotoPreview] = useState<string | null>(null);
   const [altDocFields, setAltDocFields] = useState<Record<string, string>>({});
   const [altPersonal, setAltPersonal] = useState<Record<string, string>>({});
+  const [checkResult, setCheckResult] = useState<'pass' | 'fail' | 'review' | null>(null);
 
   useEffect(() => {
     fetch(`/api/session/${sessionId}`)
@@ -369,6 +370,17 @@ export default function VerifyPage() {
 
       const data = await res.json();
       if (res.ok) {
+        // Extract check result from workflow response
+        // Response structure: data.workflowResult.workflowResult.status (PASS/FAIL/REVIEW)
+        const wr = data.workflowResult;
+        const status = wr?.workflowResult?.status || wr?.status;
+        if (status) {
+          const upper = (typeof status === 'string' ? status : '').toUpperCase();
+          if (upper === 'PASS' || upper === 'CLEAR') setCheckResult('pass');
+          else if (upper === 'FAIL') setCheckResult('fail');
+          else if (upper === 'REVIEW' || upper === 'INCOMPLETE') setCheckResult('review');
+        }
+        console.log('[Workflow Result]', JSON.stringify(wr, null, 2));
         setPhase('post');
       } else {
         console.error('Create entity failed:', JSON.stringify(data, null, 2));
@@ -508,7 +520,7 @@ export default function VerifyPage() {
               <button
                 onClick={() => advancePreSlide()}
                 disabled={!answers.first_name?.trim()}
-                className="w-full py-4 bg-brand-600 text-white font-semibold rounded-2xl disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-[0.98]"
+                className="w-full py-4 sticky bottom-6 bg-brand-600 text-white font-semibold rounded-2xl disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-[0.98]"
               >
                 Continue
               </button>
@@ -696,6 +708,7 @@ export default function VerifyPage() {
                   }`}
                 >
                   {s.name} <span className="text-gray-400">({s.code})</span>
+                  {s.code === 'WA' && <span className="ml-2 text-yellow-500">&#9733; Example</span>}
                 </button>
               ))}
             </div>
@@ -754,7 +767,7 @@ export default function VerifyPage() {
           <button
             onClick={() => setPhase('alt_doc_form')}
             disabled={!altPhoto}
-            className="w-full py-4 mt-6 bg-brand-600 text-white font-semibold rounded-2xl disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-[0.98]"
+            className="w-full py-4 mt-6 sticky bottom-6 bg-brand-600 text-white font-semibold rounded-2xl disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-[0.98]"
           >
             Continue
           </button>
@@ -1259,15 +1272,52 @@ export default function VerifyPage() {
       {phase === 'complete' && (
         <div className="flex-1 flex items-center justify-center px-6">
           <div className="text-center max-w-sm">
-            <div className="w-20 h-20 rounded-full bg-brand-100 flex items-center justify-center mx-auto mb-6">
-              <svg className="w-10 h-10 text-brand-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
-            <h1 className="text-2xl font-bold text-brand-900 mb-3">You&apos;re all set!</h1>
-            <p className="text-gray-500">
-              Thank you for completing your verification with ACME Ltd. We&apos;ll review your information and be in touch shortly.
-            </p>
+            {checkResult === 'pass' && (
+              <>
+                <img src="/success.png" alt="Verification Passed" className="w-20 h-20 mx-auto mb-6" />
+                <h1 className="text-2xl font-bold text-green-900 mb-3">Verification Passed</h1>
+                <p className="text-gray-500">
+                  Your identity has been successfully verified. You&apos;re all set to get started with ACME Ltd.
+                </p>
+              </>
+            )}
+            {checkResult === 'fail' && (
+              <>
+                <img src="/failure.png" alt="Verification Failed" className="w-20 h-20 mx-auto mb-6" />
+                <h1 className="text-2xl font-bold text-red-900 mb-3">Verification Failed</h1>
+                <p className="text-gray-500">
+                  We were unable to verify your identity. Please contact ACME Ltd support for assistance.
+                </p>
+              </>
+            )}
+            {checkResult === 'review' && (
+              <>
+                <img src="/review.png" alt="Under Review" className="w-20 h-20 mx-auto mb-6" />
+                <h1 className="text-2xl font-bold text-amber-900 mb-3">Under Review</h1>
+                <p className="text-gray-500">
+                  Your verification requires further review. ACME Ltd will be in touch shortly with an update.
+                </p>
+              </>
+            )}
+            {!checkResult && (
+              <>
+                <div className="w-20 h-20 rounded-full bg-brand-100 flex items-center justify-center mx-auto mb-6">
+                  <svg className="w-10 h-10 text-brand-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <h1 className="text-2xl font-bold text-brand-900 mb-3">You&apos;re all set!</h1>
+                <p className="text-gray-500">
+                  Thank you for completing your verification with ACME Ltd. We&apos;ll review your information and be in touch shortly.
+                </p>
+              </>
+            )}
+            <button
+              onClick={() => window.location.href = '/'}
+              className="mt-8 px-6 py-3 text-sm font-medium text-brand-600 border-2 border-brand-200 rounded-2xl hover:bg-brand-50 transition-colors"
+            >
+              Start again
+            </button>
           </div>
         </div>
       )}
