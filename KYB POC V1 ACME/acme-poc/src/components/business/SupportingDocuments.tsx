@@ -18,6 +18,9 @@ export function SupportingDocuments() {
   const [isDragOver, setIsDragOver] = useState(false);
   const [selectedDocType, setSelectedDocType] = useState<string>('');
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadStage, setUploadStage] = useState<string>('');
+  const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [uploadResults, setUploadResults] = useState<
     Array<{ index: number; status: 'success' | 'error'; message?: string }>
   >([]);
@@ -58,6 +61,33 @@ export function SupportingDocuments() {
     Array.from(e.dataTransfer.files).forEach(handleFile);
   }
 
+  function startProgressBar(durationMs: number, stage: string) {
+    if (progressIntervalRef.current) {
+      clearInterval(progressIntervalRef.current);
+      progressIntervalRef.current = null;
+    }
+    setUploadProgress(0);
+    setUploadStage(stage);
+    const startTime = Date.now();
+    progressIntervalRef.current = setInterval(() => {
+      const elapsed = Date.now() - startTime;
+      const progress = Math.min((elapsed / durationMs) * 95, 95);
+      setUploadProgress(progress);
+    }, 200);
+  }
+
+  function stopProgressBar() {
+    if (progressIntervalRef.current) {
+      clearInterval(progressIntervalRef.current);
+      progressIntervalRef.current = null;
+    }
+    setUploadProgress(100);
+    setTimeout(() => {
+      setUploadProgress(0);
+      setUploadStage('');
+    }, 500);
+  }
+
   async function handleUploadAll() {
     if (supportingDocuments.length === 0) return;
 
@@ -76,6 +106,7 @@ export function SupportingDocuments() {
       const doc = supportingDocuments[i];
       try {
         // Step 1: Upload document
+        setUploadStage('Uploading document...');
         const formData = new FormData();
         formData.append('entityId', entityId);
         formData.append('docType', doc.docType);
@@ -88,6 +119,7 @@ export function SupportingDocuments() {
         });
 
         if (!res.ok) {
+          setUploadStage('');
           const err = await res.json();
           results.push({ index: i, status: 'error', message: err.error });
           continue;
@@ -98,11 +130,14 @@ export function SupportingDocuments() {
 
         // Step 2: If it's a trust deed, trigger trust analysis
         if (doc.docType === 'TRUST_DEED' && documentId) {
+          startProgressBar(60000, 'Analysing trust document...');
           const analyzeRes = await fetch('/api/documents/analyze', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ entityId, documentId }),
           });
+
+          stopProgressBar();
 
           if (analyzeRes.ok) {
             const analyzeData = await analyzeRes.json();
@@ -143,9 +178,12 @@ export function SupportingDocuments() {
             results.push({ index: i, status: 'error', message: err.error || 'Upload succeeded but analysis failed' });
           }
         } else {
+          setUploadStage('');
           results.push({ index: i, status: 'success' });
         }
       } catch {
+        stopProgressBar();
+        setUploadStage('');
         results.push({ index: i, status: 'error', message: 'Network error' });
       }
     }
@@ -305,6 +343,30 @@ export function SupportingDocuments() {
             );
           })}
 
+          {isUploading && uploadStage && (
+            <div className="mt-3 mb-1">
+              {uploadProgress > 0 ? (
+                <>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-xs font-medium text-wise-gray-700">{uploadStage}</span>
+                    <span className="text-xs text-wise-gray-500">{Math.round(uploadProgress)}%</span>
+                  </div>
+                  <div className="w-full bg-wise-gray-200 rounded-full h-2.5 overflow-hidden">
+                    <div
+                      className="bg-wise-green h-2.5 rounded-full transition-all duration-200 ease-linear"
+                      style={{ width: `${uploadProgress}%` }}
+                    />
+                  </div>
+                  <p className="text-[11px] text-wise-gray-500 mt-1.5">
+                    Trust analysis typically takes between 30 seconds and a minute. Please wait while we process your document.
+                  </p>
+                </>
+              ) : (
+                <span className="text-xs font-medium text-wise-gray-700">{uploadStage}</span>
+              )}
+            </div>
+          )}
+
           <Button
             variant="secondary"
             size="sm"
@@ -316,7 +378,7 @@ export function SupportingDocuments() {
             {isUploading ? (
               <>
                 <Spinner size="sm" className="mr-1.5" />
-                Uploading...
+                Processing...
               </>
             ) : (
               'Upload All'
