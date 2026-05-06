@@ -16,6 +16,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Step 1: Trigger analysis
+    console.log('[TrustAnalyzer] Using experimental base URL:', process.env.FRANKIE_API_EXPERIMENTAL_BASE_URL || '(not set, using derived)');
     const triggerResult = await triggerTrustAnalysis(entityId, documentId);
     console.log('[TrustAnalyzer] Trigger response:', triggerResult.status, JSON.stringify(triggerResult.data));
 
@@ -61,8 +62,9 @@ export async function POST(req: NextRequest) {
     );
   } catch (error) {
     console.error('[TrustAnalyzer] Error:', error);
+    const message = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: `Internal server error: ${message}` },
       { status: 500 }
     );
   }

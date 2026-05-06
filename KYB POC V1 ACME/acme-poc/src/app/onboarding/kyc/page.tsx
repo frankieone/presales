@@ -94,8 +94,8 @@ export default function KycPage() {
     return (
       <div>
         <Alert variant="warning">No individuals to verify. Please go back and review.</Alert>
-        <Button variant="outline" className="mt-4" onClick={() => router.push('/onboarding/review')}>
-          Back to Review
+        <Button variant="outline" className="mt-4" onClick={() => router.push('/onboarding/aml')}>
+          Back to AML Screening
         </Button>
       </div>
     );
@@ -162,8 +162,8 @@ export default function KycPage() {
       </div>
 
       <div className="flex items-center justify-between mt-8">
-        <Button variant="ghost" onClick={() => router.push('/onboarding/review')}>
-          &larr; Back to Review
+        <Button variant="ghost" onClick={() => router.push('/onboarding/aml')}>
+          &larr; Back to AML Screening
         </Button>
         <Button
           size="lg"

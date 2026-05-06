@@ -9,6 +9,7 @@ const STEPS = [
   { label: 'Search', href: '/onboarding' },
   { label: 'Select', href: '/onboarding/results' },
   { label: 'Review', href: '/onboarding/review' },
+  { label: 'AML', href: '/onboarding/aml' },
   { label: 'Verify', href: '/onboarding/kyc' },
   { label: 'Results', href: '/onboarding/dashboard' },
 ];
@@ -16,9 +17,10 @@ const STEPS = [
 function getStepIndex(pathname: string): number {
   if (pathname === '/onboarding') return 0;
   if (pathname === '/onboarding/results') return 1;
-  if (pathname === '/onboarding/review') return 2;
-  if (pathname === '/onboarding/kyc') return 3;
-  if (pathname === '/onboarding/dashboard') return 4;
+  if (pathname === '/onboarding/review' || pathname.startsWith('/onboarding/review/')) return 2;
+  if (pathname === '/onboarding/aml') return 3;
+  if (pathname === '/onboarding/kyc') return 4;
+  if (pathname === '/onboarding/dashboard') return 5;
   return 0;
 }
 

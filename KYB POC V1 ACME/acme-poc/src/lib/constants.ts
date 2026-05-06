@@ -1,5 +1,7 @@
-export const FRANKIE_API_BASE_URL =
-  process.env.FRANKIE_API_BASE_URL || 'https://api.demo.frankiefinancial.io/compliance/v1.2';
+const _apiEndpoint = process.env.APIENDPOINT || process.env.FRANKIE_API_BASE_URL || 'https://api.kycaml.uat.frankiefinancial.io';
+export const FRANKIE_API_BASE_URL = _apiEndpoint.includes('/compliance/v1.2')
+  ? _apiEndpoint
+  : `${_apiEndpoint}/compliance/v1.2`;
 
 export const FRANKIE_API_V2_BASE_URL =
   process.env.FRANKIE_API_V2_BASE_URL || 'https://api.uat.frankie.one';
@@ -8,7 +10,7 @@ export const FRANKIE_API_V2_BASE_URL =
 // e.g. https://api.demo.frankiefinancial.io/compliance/v1.2 -> https://api.kycaml.demo.frankiefinancial.io/experimental
 // e.g. https://api.kycaml.uat.frankiefinancial.io/compliance/v1.2 -> https://api.kycaml.uat.frankiefinancial.io/experimental
 function deriveExperimentalUrl(): string {
-  const base = (process.env.FRANKIE_API_BASE_URL || 'https://api.demo.frankiefinancial.io/compliance/v1.2')
+  const base = (process.env.FRANKIE_API_BASE_URL || process.env.APIENDPOINT || 'https://api.demo.frankiefinancial.io/compliance/v1.2')
     .replace(/\/compliance\/v1\.2\/?$/, '');
   // Ensure we're on the kycaml subdomain
   const kycamlBase = base.includes('kycaml') ? base : base.replace('://api.', '://api.kycaml.');
@@ -18,8 +20,8 @@ function deriveExperimentalUrl(): string {
 export const FRANKIE_API_EXPERIMENTAL_BASE_URL =
   process.env.FRANKIE_API_EXPERIMENTAL_BASE_URL || deriveExperimentalUrl();
 
-export const FRANKIE_CUSTOMER_ID = process.env.FRANKIE_CUSTOMER_ID || '';
-export const FRANKIE_API_KEY = process.env.FRANKIE_API_KEY || '';
+export const FRANKIE_CUSTOMER_ID = process.env.UATPARENTID || '';
+export const FRANKIE_API_KEY = process.env.PARENTAPIKEY || '';
 export const FRANKIE_CUSTOMER_CHILD_ID = process.env.FRANKIE_CUSTOMER_CHILD_ID || '';
 
 export const DEFAULT_CHECK_TYPE = 'profile';

@@ -43,6 +43,9 @@ export function BusinessSearchForm() {
     { name: 'ULTRA TUNE AUSTRALIA PTY. LTD.', abn: '52065214708', notes: '1 UBO + 3 directors' },
     { name: 'ALPHABET TECHNOLOGIES PTY LTD', abn: '37615828816', notes: '3+ directors' },
     { name: 'THE FALCON COMPANY PTY. LTD.', abn: '54154382331', notes: '5 directors, blocking test' },
+    { name: 'AML FLAG TEST', abn: '69662036571', notes: 'Business with AML hit (PEP/Sanctions)' },
+    { name: 'NHILL MEDICAL CLINIC', abn: '12006291014', notes: 'AML hit on business' },
+    { name: 'TOLL PTY LTD', abn: '000697861', notes: 'Individual AML hits' },
   ];
 
   async function handleAustralianSearch(input: string): Promise<boolean> {
