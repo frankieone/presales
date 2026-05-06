@@ -51,6 +51,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: true, data, documentId });
   } catch (error) {
     console.error('Document upload error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    const message = error instanceof Error ? error.message : String(error);
+    return NextResponse.json({ error: `Internal server error: ${message}` }, { status: 500 });
   }
 }
