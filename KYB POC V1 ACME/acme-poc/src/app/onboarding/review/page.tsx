@@ -310,7 +310,7 @@ export default function ReviewPage() {
               <Button
                 onClick={() => {
                   setShowTrustWarning(false);
-                  router.push('/onboarding/kyc');
+                  router.push('/onboarding/aml');
                 }}
               >
                 Proceed Anyway
@@ -331,11 +331,11 @@ export default function ReviewPage() {
               setShowTrustWarning(true);
               return;
             }
-            router.push('/onboarding/kyc');
+            router.push('/onboarding/aml');
           }}
           disabled={!canProceed}
         >
-          Proceed to KYC Verification &rarr;
+          Proceed to AML Screening &rarr;
         </Button>
       </div>
     </div>

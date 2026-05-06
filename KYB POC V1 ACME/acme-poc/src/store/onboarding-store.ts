@@ -4,6 +4,7 @@ import { create } from 'zustand';
 import type { BusinessSearchResult, BusinessProfile, AustralianOwnershipResponse, BlockingEntity, TrustAnalysisResult } from '@/types/business';
 import type { Individual } from '@/types/individual';
 import type { KycResult } from '@/types/kyc';
+import type { AmlScreeningResult, AmlClassification } from '@/types/aml';
 
 interface BusinessQuestionnaire {
   employeeCount?: string;
@@ -43,6 +44,12 @@ interface OnboardingState {
   // Supporting documents
   supportingDocuments: Array<{ file: File; name: string; docType: string; country?: string }>;
 
+  // AML Screening
+  businessAmlResult: AmlScreeningResult | null;
+  individualAmlResults: Map<string, AmlScreeningResult>;
+  amlScreeningStatus: 'idle' | 'screening' | 'done' | 'error';
+  amlError: string | null;
+
   // Step 4-5: KYC
   kycResults: Map<string, KycResult>;
   isSubmittingKyc: boolean;
@@ -74,6 +81,11 @@ interface OnboardingState {
   setTrustAnalysisResult: (entityId: string, result: TrustAnalysisResult) => void;
   setTrustLinkedOrgId: (orgId: string | null) => void;
   setBusinessQuestionnaire: (answers: Partial<BusinessQuestionnaire>) => void;
+  setBusinessAmlResult: (result: AmlScreeningResult | null) => void;
+  addIndividualAmlResult: (individualId: string, result: AmlScreeningResult) => void;
+  updateAmlMatchClassification: (entityId: string, matchId: string, classification: AmlClassification) => void;
+  setAmlScreeningStatus: (status: 'idle' | 'screening' | 'done' | 'error') => void;
+  setAmlError: (error: string | null) => void;
   reset: () => void;
 }
 
@@ -96,6 +108,10 @@ const initialState = {
   individuals: [],
   isLoadingProfile: false,
   profileError: null,
+  businessAmlResult: null as AmlScreeningResult | null,
+  individualAmlResults: new Map<string, AmlScreeningResult>(),
+  amlScreeningStatus: 'idle' as const,
+  amlError: null as string | null,
   kycResults: new Map<string, KycResult>(),
   isSubmittingKyc: false,
   kycError: null,
@@ -160,5 +176,41 @@ export const useOnboardingStore = create<OnboardingState>((set) => ({
     set((state) => ({
       businessQuestionnaire: { ...state.businessQuestionnaire, ...answers },
     })),
+  setBusinessAmlResult: (result) => set({ businessAmlResult: result }),
+  addIndividualAmlResult: (individualId, result) =>
+    set((state) => {
+      const newResults = new Map(state.individualAmlResults);
+      newResults.set(individualId, result);
+      return { individualAmlResults: newResults };
+    }),
+  updateAmlMatchClassification: (entityId, matchId, classification) =>
+    set((state) => {
+      // Update in business result
+      if (state.businessAmlResult?.entityId === entityId) {
+        const updated = {
+          ...state.businessAmlResult,
+          matches: state.businessAmlResult.matches.map((m) =>
+            m.matchId === matchId ? { ...m, classification } : m
+          ),
+        };
+        return { businessAmlResult: updated };
+      }
+      // Update in individual results
+      const newResults = new Map(state.individualAmlResults);
+      for (const [key, result] of newResults) {
+        if (result.entityId === entityId) {
+          newResults.set(key, {
+            ...result,
+            matches: result.matches.map((m) =>
+              m.matchId === matchId ? { ...m, classification } : m
+            ),
+          });
+          break;
+        }
+      }
+      return { individualAmlResults: newResults };
+    }),
+  setAmlScreeningStatus: (status) => set({ amlScreeningStatus: status }),
+  setAmlError: (error) => set({ amlError: error }),
   reset: () => set(initialState),
 }));

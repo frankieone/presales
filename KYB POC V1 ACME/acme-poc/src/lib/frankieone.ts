@@ -598,6 +598,141 @@ export async function generateOnboardingUrl(params: {
   return { data, status: res.status };
 }
 
+export async function screenBusinessAml(entityId: string) {
+  // POST /business/{entityId}/verify is the CheckOrganisation endpoint (async, returns 202)
+  const url = `${FRANKIE_API_BASE_URL}/business/${entityId}/verify?entityCategories=organisation&checkType=pep_media&resultLevel=full`;
+  console.log('[AML Business] POST', url);
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: getHeaders(),
+  });
+
+  const data = await res.json();
+  console.log('[AML Business] Response:', res.status, JSON.stringify(data).slice(0, 500));
+
+  // Always returns 202 (async) — poll for result
+  if (res.status === 202 && data.requestId) {
+    return pollForResult(data.requestId);
+  }
+
+  return { data, status: res.status };
+}
+
+export async function getBusinessCheckResults(entityId: string) {
+  const url = `${FRANKIE_API_BASE_URL}/business/${entityId}/checks?resultLevel=full`;
+  console.log('[AML Business Results] GET', url);
+
+  const res = await fetch(url, {
+    method: 'GET',
+    headers: getHeaders(),
+  });
+
+  const data = await res.json();
+  console.log('[AML Business Results] Response:', res.status, JSON.stringify(data).slice(0, 500));
+  return { data, status: res.status };
+}
+
+export async function screenIndividualAml(entity: {
+  givenName: string;
+  middleName?: string;
+  familyName: string;
+  dateOfBirth?: string;
+  address?: {
+    streetAddress?: string;
+    city?: string;
+    state?: string;
+    postalCode?: string;
+    country?: string;
+  };
+}) {
+  const frankieEntity: Record<string, unknown> = {
+    entityType: 'INDIVIDUAL',
+    entityProfile: DEFAULT_ENTITY_PROFILE,
+    name: {
+      givenName: entity.givenName,
+      familyName: entity.familyName,
+      ...(entity.middleName ? { middleName: entity.middleName } : {}),
+    },
+    extraData: [...KYC_CONSENT_EXTRA_DATA],
+  };
+
+  if (entity.dateOfBirth) {
+    frankieEntity.dateOfBirth = { dateOfBirth: entity.dateOfBirth };
+  }
+
+  if (entity.address) {
+    const addr: Record<string, string> = {};
+    if (entity.address.streetAddress) addr.streetName = entity.address.streetAddress;
+    if (entity.address.city) addr.town = entity.address.city;
+    if (entity.address.state) addr.state = entity.address.state;
+    if (entity.address.postalCode) addr.postalCode = entity.address.postalCode;
+    if (entity.address.country) addr.country = entity.address.country;
+    frankieEntity.addresses = [addr];
+  }
+
+  const url = `${FRANKIE_API_BASE_URL}${ENDPOINTS.ENTITY_VERIFY}/pep_media/full`;
+  console.log('[AML Individual] POST', url);
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({ entity: frankieEntity }),
+  });
+
+  const data = await res.json();
+  console.log('[AML Individual] Response:', res.status, JSON.stringify(data).slice(0, 500));
+  return { data, status: res.status };
+}
+
+export async function screenExistingIndividualAml(entityId: string) {
+  const url = `${FRANKIE_API_BASE_URL}${ENDPOINTS.ENTITY_VERIFY_EXISTING}/${entityId}/verify/pep_media/full`;
+  console.log('[AML Individual Existing] POST', url);
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({
+      entity: {
+        entityId,
+        entityType: 'INDIVIDUAL',
+        entityProfile: DEFAULT_ENTITY_PROFILE,
+        extraData: [...KYC_CONSENT_EXTRA_DATA],
+      },
+    }),
+  });
+
+  const data = await res.json();
+  console.log('[AML Individual Existing] Response:', res.status, JSON.stringify(data).slice(0, 500));
+  return { data, status: res.status };
+}
+
+export async function classifyAmlResult(
+  entityId: string,
+  processResultIds: string[],
+  manualStatus: string,
+  comment?: string
+) {
+  const url = `${FRANKIE_API_V2_BASE_URL}/v2/individuals/${entityId}/results/aml`;
+  console.log('[AML Classify] PATCH', url);
+
+  const body: Record<string, unknown> = {
+    processResultIds,
+    manualStatus,
+  };
+  if (comment) body.comment = comment;
+
+  const res = await fetch(url, {
+    method: 'PATCH',
+    headers: getHeaders(),
+    body: JSON.stringify(body),
+  });
+
+  const data = await res.json();
+  console.log('[AML Classify] Response:', res.status, JSON.stringify(data).slice(0, 500));
+  return { data, status: res.status };
+}
+
 export async function deleteEntity(entityId: string) {
   const url = `${FRANKIE_API_BASE_URL}${ENDPOINTS.ENTITY_BASE}/${entityId}`;
 
