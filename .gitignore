@@ -49,3 +49,6 @@ next-env.d.ts
 !/KYB POC V1 ACME/
 !/KYB V2 ACME/
 
+# Not yet ready to publish — uncomment when it is:
+# !/EmbeddedOneSDK/
+
