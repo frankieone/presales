@@ -563,40 +563,61 @@ export async function uploadDocumentToEntity(
   return { data, status: res.status };
 }
 
-// ─── v2: Trust Analysis (already v2) ──────────────────────────────
+// ─── v2: Trust Analysis ───────────────────────────────────────────
+// Per docs/kyb/trust-analyzer-implementation: upload the deed as a TRUST_DEED
+// document, execute GLB-Trust-Analysis with the documentId as an execution
+// variable, then read the results off the document's `analyses` collection.
 
-export async function triggerTrustAnalysis(entityId: string, documentId: string) {
-  const url = `${FRANKIE_API_V2_BASE_URL}/v2/organizations/${entityId}/documents/${documentId}/analysis`;
+export const TRUST_ANALYSIS_WORKFLOW = 'GLB-Trust-Analysis';
+
+/** Step 2 — kick off the analysis workflow for an uploaded deed. */
+export async function executeTrustAnalysis(
+  entityId: string,
+  documentId: string,
+  serviceName = 'DEFAULT'
+) {
+  const encodedWorkflow = encodeURIComponent(TRUST_ANALYSIS_WORKFLOW);
+  const url = `${FRANKIE_API_V2_BASE_URL}${V2_ENDPOINTS.ORGANIZATIONS_BASE}/${entityId}/serviceprofiles/${serviceName}/workflows/${encodedWorkflow}/execute`;
 
   const res = await fetch(url, {
     method: 'POST',
     headers: getHeaders(),
+    body: JSON.stringify({
+      executionVariables: { documentId },
+      comment: { text: 'Trust deed analysis for merchant onboarding' },
+    }),
   });
 
   const data = await res.json();
   return { data, status: res.status };
 }
 
-export async function getTrustAnalysisStatus(documentId: string) {
-  const url = `${FRANKIE_API_V2_BASE_URL}/data/v2/business/trust-deeds/${documentId}/analyse`;
+/** Step 3 — track the execution. */
+export async function getTrustAnalysisExecution(
+  entityId: string,
+  executionId: string,
+  serviceName = 'DEFAULT'
+) {
+  const encodedWorkflow = encodeURIComponent(TRUST_ANALYSIS_WORKFLOW);
+  const url = `${FRANKIE_API_V2_BASE_URL}${V2_ENDPOINTS.ORGANIZATIONS_BASE}/${entityId}/serviceprofiles/${serviceName}/workflows/${encodedWorkflow}/executions/${executionId}`;
 
-  const res = await fetch(url, {
-    method: 'GET',
-    headers: getHeaders(),
-  });
-
+  const res = await fetch(url, { method: 'GET', headers: getHeaders() });
   const data = await res.json();
   return { data, status: res.status };
 }
 
-export async function getTrustAnalysisResults(entityId: string, documentId: string) {
-  const url = `${FRANKIE_API_V2_BASE_URL}/data/v2/business/trust-deeds/${entityId}/analysis-result/${documentId}`;
+/**
+ * Step 4 — the extracted structure. Note the path is `analyses` (plural);
+ * `showResults` takes LATEST (default), COMPLETE or CONFIRMED.
+ */
+export async function getDocumentAnalyses(
+  entityId: string,
+  documentId: string,
+  showResults: 'LATEST' | 'COMPLETE' | 'CONFIRMED' = 'LATEST'
+) {
+  const url = `${FRANKIE_API_V2_BASE_URL}${V2_ENDPOINTS.ORGANIZATIONS_BASE}/${entityId}/documents/${documentId}/analyses?showResults=${showResults}`;
 
-  const res = await fetch(url, {
-    method: 'GET',
-    headers: getHeaders(),
-  });
-
+  const res = await fetch(url, { method: 'GET', headers: getHeaders() });
   const data = await res.json();
   return { data, status: res.status };
 }
