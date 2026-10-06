@@ -33,3 +33,19 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# ── Real-customer work — never push to this repo ──────────────────
+# This repo is PUBLIC. Demos branded for, or containing data from, a real
+# customer stay on local machines only. ACME is a fictional customer and is
+# safe to track; the directories below are not.
+#
+# These are ignored defensively: an IMB-branded demo was once pushed by
+# branching off a local branch that carried it, so relying on "nobody has
+# staged it yet" is not enough.
+/ANZ/
+/Evermed/
+/KYB V2 IMB/
+/KYB V2 Tyro/
+/Super Demo/
+/HostedOneSDK V2 Proove/
+/entity-attachments/
