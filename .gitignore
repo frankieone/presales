@@ -33,3 +33,22 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# ── Tracked scope ─────────────────────────────────────────────────
+# Only the entries re-included below are tracked here. Anything else at the
+# top level is local-only work and is ignored by default, so a new directory
+# has to be added deliberately rather than swept up by `git add -A`.
+/*
+!/.github/
+!/.gitignore
+!/CLAUDE.md
+!/README.md
+!/download-attachments.mjs
+!/download-entity-attachments.sh
+!/HostedOneSDK V2/
+!/KYB POC V1 ACME/
+!/KYB V2 ACME/
+
+# Not yet ready to publish — uncomment when it is:
+# !/EmbeddedOneSDK/
+
