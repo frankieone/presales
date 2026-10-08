@@ -38,3 +38,4 @@ safeguard exists. Describe the change, not the incident behind it.
 - **HostedOneSDK V2**: runs on port 4568
 - **KYB POC V1 ACME** (`acme-poc/`): runs on port 6513
 - **KYB V2 ACME**: additional project in the repo
+- **Fraud and Transaction Monitoring**: one shared app (`app/`) run as Banking (8093), Superannuation (8094) and SMSF (8095); `npm test` in `app/` runs live start-up checks
