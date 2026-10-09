@@ -82,8 +82,13 @@ export default function Security() {
     try {
       const token = await registerDeviceSession(user.userId, 'account_update');
       await changeContact(user.userId, { email: changedEmail, phone: changedMobile });
-      if (changedEmail) await recordActivity(user.userId, token, 'EMAIL_CHANGE', 'INDIVIDUAL', buildRiskAttributes());
-      if (changedMobile) await recordActivity(user.userId, token, 'PHONE_CHANGE', 'INDIVIDUAL', buildRiskAttributes());
+      // The event is for the activity timeline; on some records UAT answers it
+      // with a bare 500, so it must not stop the change or the re-screen.
+      const events = [changedEmail && 'EMAIL_CHANGE', changedMobile && 'PHONE_CHANGE'].filter(Boolean);
+      for (const type of events) {
+        await recordActivity(user.userId, token, type, 'INDIVIDUAL', buildRiskAttributes())
+          .catch((err) => console.warn(`${type} activity failed (non-blocking):`, err));
+      }
       saveRegistration({ ...registration, ...(changedEmail ? { email: changedEmail } : {}), ...(changedMobile ? { mobile: changedMobile } : {}) });
       // Re-screen the new details in the background; the result is for the Portal only.
       runFraudChecks(user.userId).catch((err) => console.warn('Re-screen failed (non-blocking):', err));
