@@ -57,4 +57,12 @@ export const addReference = (entityId, ref) =>
 export const removeReference = (entityId, referenceId) =>
   call('DELETE', `/v2/individuals/${entityId}/externalreferences/${referenceId}`);
 
+/**
+ * Classify duplicate matches on a record. FALSE_POSITIVE: different people,
+ * both stay. TRUE_POSITIVE_REJECT: same person, keep the existing record and
+ * retire this one. Setting FALSE_POSITIVE on a confirmed match reverses it.
+ */
+export const resolveDuplicates = (entityId, processResultIds, manualStatus, text) =>
+  call('PATCH', `/v2/individuals/${entityId}/results/duplicate`, { processResults: processResultIds, manualStatus, comment: { text } });
+
 export const listWorkflows = () => call('GET', '/v2/workflows');

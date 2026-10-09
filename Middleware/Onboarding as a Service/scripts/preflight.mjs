@@ -1,7 +1,7 @@
 // Start-up checks: does the FrankieOne account in .env.local support this
 // example? Prints pass or fail per check; exit code is the number of failures.
 // Creates a throwaway record named PREFLIGHT CHECK in the account.
-import { FRANKIE, INTERMEDIARIES, NAMED_IDS, SECRET, byId, refName } from '../server/config.mjs';
+import { DUPLICATE_WORKFLOW, FRANKIE, INTERMEDIARIES, NAMED_IDS, SECRET, byId, refName } from '../server/config.mjs';
 import * as frankie from '../server/frankie.mjs';
 
 const green = (s) => `\x1b[32m${s}\x1b[0m`;
@@ -31,11 +31,12 @@ await check('Credentials present', async () => {
 
 await check(`Network configured`, async () => `${INTERMEDIARIES.length} intermediaries, ${NAMED_IDS.length} named for the demo`);
 
-await check('Each named intermediary\'s workflow exists on the account', async () => {
+await check('The intermediaries\' workflows and the duplicate check exist on the account', async () => {
   const names = new Set(((await frankie.listWorkflows()).workflows || []).map((w) => w.workflowName));
-  const missing = [...new Set(NAMED_IDS.map((id) => byId[id].workflow))].filter((w) => !names.has(w));
+  const wanted = [...new Set([...NAMED_IDS.map((id) => byId[id].workflow), DUPLICATE_WORKFLOW])];
+  const missing = wanted.filter((w) => !names.has(w));
   assert(!missing.length, `not on the account: ${missing.join(', ')}`);
-  return [...new Set(NAMED_IDS.map((id) => byId[id].workflow))].join(', ');
+  return wanted.join(', ');
 });
 
 await check('A second intermediary can be added to one record, and removed', async () => {

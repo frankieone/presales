@@ -8,13 +8,15 @@
  *                  reference, handle, verification and submitted details.
  *   disclosures    what each intermediary was shown, and when.
  *   submissions    every submission per intermediary, for probing controls.
+ *   reviews        possible duplicates held for a compliance decision.
+ *   merges         every merge, with its reason, so it can be reversed.
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import { PLATFORM } from './config.mjs';
 
 const FILE = path.join(PLATFORM.dataDir, 'store.json');
-const EMPTY = { index: {}, relationships: [], disclosures: [], submissions: [] };
+const EMPTY = { index: {}, relationships: [], disclosures: [], submissions: [], reviews: [], merges: [] };
 
 let db = load();
 
@@ -35,6 +37,13 @@ export const store = {
   // identity index
   lookup: (key) => db.index[key] || null,
   remember(key, entityId) { db.index[key] = entityId; save(); },
+  /** Drop index entries for a record, e.g. to show what happens when an existing client was never indexed. */
+  forget(entityId) {
+    for (const [k, v] of Object.entries(db.index)) if (v === entityId) delete db.index[k];
+    save();
+  },
+  /** Every FrankieOne record the platform knows: indexed or holding a relationship. */
+  networkEntities: () => new Set([...Object.values(db.index), ...db.relationships.map((r) => r.entityId)]),
 
   // relationships
   relationshipsFor: (intermediaryId) => db.relationships.filter((r) => r.intermediaryId === intermediaryId && !r.removedAt),
@@ -60,6 +69,15 @@ export const store = {
     save();
   },
   submissions: () => db.submissions,
+
+  // reviews and merges
+  addReview(review) { db.reviews.push(review); save(); return review; },
+  review: (id) => db.reviews.find((r) => r.id === id),
+  reviews: () => db.reviews,
+  addMerge(merge) { db.merges.push(merge); save(); return merge; },
+  merge: (id) => db.merges.find((m) => m.id === id),
+  merges: () => db.merges,
+  touch() { save(); },
 
   stats: () => ({ indexKeys: Object.keys(db.index).length }),
   reset() { db = structuredClone(EMPTY); save(); },

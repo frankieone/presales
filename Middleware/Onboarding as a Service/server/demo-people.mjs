@@ -15,6 +15,14 @@ export const DEMO_PEOPLE = [
     },
   },
   {
+    id: 'testone-medicare', label: 'James Testone — same person, Medicare card instead of licence',
+    person: {
+      givenName: 'JAMES', middleName: 'A', familyName: 'TESTONE', dateOfBirth: '1950-01-01',
+      address: { unitNumber: 'U 1', streetNumber: '35', streetName: 'CONN', streetType: 'STREET', locality: 'FERNTREE GULLY', subdivision: 'VIC', postalCode: '3156' },
+      document: { type: 'NATIONAL_HEALTH_ID', number: '6603984391', cardColour: 'G', cardReference: '1', nameOnCard: 'JAMES A TESTONE', expiry: '2030-01-01', country: 'AUS', subdivision: 'VIC' },
+    },
+  },
+  {
     id: 'testseven', label: 'Geoff Testseven — verifies (Medicare)',
     person: {
       givenName: 'GEOFF', middleName: 'E', familyName: 'TESTSEVEN', dateOfBirth: '1956-01-01',

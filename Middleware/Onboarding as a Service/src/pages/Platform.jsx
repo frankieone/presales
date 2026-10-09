@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ShieldCheck, RefreshCw, LogOut, Trash2, Repeat } from 'lucide-react';
-import { getSession, network, resetDemo, setSession } from '../api';
+import { ShieldCheck, RefreshCw, LogOut, Trash2, Repeat, GitMerge, AlertTriangle, Undo2, Loader2 } from 'lucide-react';
+import { decideReview, forgetIndex, getSession, network, resetDemo, reverseMerge, setSession } from '../api';
 import { StatusPill } from './Console';
 
 const fmt = (iso) => (iso ? new Date(iso).toLocaleString('en-AU', { dateStyle: 'short', timeStyle: 'medium' }) : '');
@@ -24,6 +24,12 @@ export default function Platform({ demo }) {
     const t = setInterval(load, 5000);
     return () => clearInterval(t);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const [busy, setBusy] = useState('');
+  const act = async (key, fn) => {
+    setBusy(key); setError('');
+    try { await fn(); await load(); } catch (e) { setError(e.message); } finally { setBusy(''); }
+  };
 
   const reset = async () => {
     if (!window.confirm('Clear the platform\'s demo records (index, relationships, logs)? FrankieOne records are not deleted.')) return;
@@ -59,8 +65,47 @@ export default function Platform({ demo }) {
               <Stat label="With clients" value={data.intermediariesActive} />
               <Stat label="Investor records" value={data.investors.length} hint="one per person" />
               <Stat label="Intermediary relationships" value={data.relationships} />
-              <Stat label="Onboardings on a record already held" value={data.reusedOnboardings} />
+              <Stat label="Onboardings on a record already held" value={data.reusedOnboardings} hint={data.reviews.length ? `${data.reviews.length} awaiting a decision` : undefined} />
             </div>
+
+            {data.reviews.length > 0 && (
+              <>
+                <h2 className="mt-10 text-lg font-semibold text-slate-900 flex items-center gap-2">
+                  <AlertTriangle className="w-5 h-5 text-amber-500" /> Needs a decision
+                </h2>
+                <p className="text-sm text-slate-500">The identity index didn't recognise these submissions, but FrankieOne's duplicate check found a possible match in the network. They didn't meet the merge policy, so a person decides. The intermediary sees only that the application is in review.</p>
+                {data.reviews.map((rv) => (
+                  <div key={rv.id} className="mt-4 bg-white rounded-xl border border-amber-200">
+                    <div className="px-5 py-3 border-b border-slate-100 text-sm text-slate-600">
+                      Possible duplicate · submitted by <span className="font-medium text-slate-900">{rv.intermediary}</span> · {fmt(rv.at)}
+                    </div>
+                    {rv.candidates.map((c) => (
+                      <div key={c.entityId} className="grid md:grid-cols-2 gap-0 border-b border-slate-100 last:border-0">
+                        <Side title="New submission" person={rv.submitted} entityId={rv.newEntityId} heldBy={[rv.intermediary]} />
+                        <div className="border-t md:border-t-0 md:border-l border-slate-100">
+                          <Side title="Record already held" person={c} entityId={c.entityId} heldBy={c.heldBy} />
+                          <div className="px-5 pb-4">
+                            <p className="text-xs text-slate-500">Matched on</p>
+                            <div className="mt-1 flex flex-wrap gap-1.5">
+                              {c.matchedOn.map((f) => <span key={f} className="text-xs bg-amber-50 text-amber-800 border border-amber-200 rounded px-2 py-0.5">{f.replace(/_/g, ' ').toLowerCase()}</span>)}
+                            </div>
+                            <p className="mt-2 text-xs text-slate-400">Rules: {c.rules.join(', ').replace(/_\+_/g, ' + ').replace(/_/g, ' ')}</p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    <div className="px-5 py-3 flex gap-2 justify-end bg-slate-50 rounded-b-xl">
+                      <button disabled={!!busy} onClick={() => act(rv.id, () => decideReview(rv.id, 'different'))}
+                        className="px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white">Different people</button>
+                      <button disabled={!!busy} onClick={() => act(rv.id, () => decideReview(rv.id, 'merge', rv.candidates[0].entityId))}
+                        className="px-3 py-2 rounded-lg bg-navy text-white text-sm inline-flex items-center gap-1.5">
+                        {busy === rv.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <GitMerge className="w-4 h-4" />} Same person: merge
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </>
+            )}
 
             <h2 className="mt-10 text-lg font-semibold text-slate-900">Investors across the network</h2>
             <p className="text-sm text-slate-500">One FrankieOne record per person. Each intermediary holding them has its own reference, handle and verification.</p>
@@ -73,7 +118,13 @@ export default function Platform({ demo }) {
                       <p className="font-semibold text-slate-900">{inv.name} <span className="font-normal text-slate-500 text-sm">· born {inv.dateOfBirth}</span></p>
                       <p className="text-xs text-slate-400 font-mono">FrankieOne entity {inv.entityId}</p>
                     </div>
-                    <span className="text-xs text-slate-500">{inv.relationships.filter((r) => !r.removedAt).length} active {inv.relationships.filter((r) => !r.removedAt).length === 1 ? 'relationship' : 'relationships'}</span>
+                    <span className="text-xs text-slate-500 text-right">
+                      {inv.relationships.filter((r) => !r.removedAt).length} active {inv.relationships.filter((r) => !r.removedAt).length === 1 ? 'relationship' : 'relationships'}
+                      <button title="Presenter tool: drop this record's identity index entries, as if the client had never been indexed. The next submission then relies on FrankieOne's duplicate check."
+                        onClick={() => act(`f-${inv.entityId}`, () => forgetIndex(inv.entityId))} className="block ml-auto mt-0.5 text-[11px] text-slate-400 hover:text-slate-700 underline decoration-dotted">
+                        {busy === `f-${inv.entityId}` ? 'Dropping…' : 'Drop index entry'}
+                      </button>
+                    </span>
                   </div>
                   <table className="w-full text-sm">
                     <thead className="text-xs text-slate-400 uppercase tracking-wide">
@@ -95,7 +146,11 @@ export default function Platform({ demo }) {
                           <td className="px-5 py-2 text-xs text-slate-500">{r.workflow}</td>
                           <td className="px-5 py-2"><StatusPill status={r.status} /> <span className="text-xs text-slate-400 ml-1">{r.workflowStatus}</span></td>
                           <td className="px-5 py-2 text-xs text-slate-500">
-                            {r.removedAt ? 'Left' : r.reusedRecord ? <span className="inline-flex items-center gap-1"><Repeat className="w-3 h-3" /> Record already held</span> : 'New to the network'}
+                            {r.removedAt ? 'Left'
+                              : r.reviewId ? <span className="text-amber-700">Possible duplicate</span>
+                              : r.mergedFrom ? <span className="inline-flex items-center gap-1"><GitMerge className="w-3 h-3" /> Merged in</span>
+                              : r.reusedRecord ? <span className="inline-flex items-center gap-1"><Repeat className="w-3 h-3" /> Record already held</span>
+                              : 'New to the network'}
                           </td>
                         </tr>
                       ))}
@@ -104,6 +159,34 @@ export default function Platform({ demo }) {
                 </div>
               ))}
             </div>
+
+            {data.merges.length > 0 && (
+              <>
+                <h2 className="mt-10 text-lg font-semibold text-slate-900">Merges</h2>
+                <p className="text-sm text-slate-500">Every merge records its reason, and can be reversed. Reversing restores the retired record and re-runs that intermediary's verification on it.</p>
+                <div className="mt-3 bg-white rounded-xl border border-slate-200 overflow-hidden">
+                  <table className="w-full text-sm">
+                    <tbody>
+                      {data.merges.map((m) => (
+                        <tr key={m.id} className={`border-t border-slate-100 first:border-0 ${m.reversedAt ? 'opacity-50' : ''}`}>
+                          <td className="px-4 py-3 text-xs text-slate-400 whitespace-nowrap">{fmt(m.at)}</td>
+                          <td className="px-4 py-3 text-slate-800">{m.intermediary}</td>
+                          <td className="px-4 py-3 text-xs"><span className={`px-2 py-0.5 rounded ${m.decidedBy === 'Compliance' ? 'bg-slate-100 text-slate-700' : 'bg-blue-50 text-blue-700'}`}>{m.decidedBy}</span></td>
+                          <td className="px-4 py-3 text-xs text-slate-500">{m.reason}</td>
+                          <td className="px-4 py-3 text-right">
+                            {m.reversedAt ? <span className="text-xs text-slate-400">Reversed</span> : (
+                              <button disabled={!!busy} onClick={() => act(m.id, () => reverseMerge(m.id))} className="text-xs px-2.5 py-1 rounded border border-slate-300 inline-flex items-center gap-1">
+                                {busy === m.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Undo2 className="w-3 h-3" />} Reverse
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
 
             <div className="mt-10 grid md:grid-cols-2 gap-6">
               <div>
@@ -144,6 +227,18 @@ export default function Platform({ demo }) {
           </>
         )}
       </main>
+    </div>
+  );
+}
+
+function Side({ title, person, entityId, heldBy }) {
+  return (
+    <div className="px-5 py-4">
+      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">{title}</p>
+      <p className="mt-1 font-semibold text-slate-900">{person?.name}</p>
+      <p className="text-sm text-slate-600">Born {person?.dateOfBirth}</p>
+      {person?.document && <p className="text-sm text-slate-600">{person.document.type.replace(/_/g, ' ').toLowerCase()} ending {person.document.last4}</p>}
+      <p className="mt-1 text-xs text-slate-400">Held by {heldBy?.filter(Boolean).join(', ') || '—'} · <span className="font-mono">{entityId?.slice(0, 8)}</span></p>
     </div>
   );
 }

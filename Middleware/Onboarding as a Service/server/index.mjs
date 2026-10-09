@@ -15,7 +15,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { FRANKIE, NAMED_IDS, PLATFORM, POLICY, SECRET, byId } from './config.mjs';
-import { ClientError, intermediaryForToken, list, network, offboard, onboard, refresh, tokenFor } from './tier1.mjs';
+import { ClientError, decide, forgetIndex, intermediaryForToken, list, network, offboard, onboard, refresh, reverseMerge, tokenFor } from './tier1.mjs';
 import { store } from './store.mjs';
 import { DEMO_PEOPLE } from './demo-people.mjs';
 
@@ -60,6 +60,11 @@ async function route(req, res) {
     if (bearer(req) !== OPERATOR_TOKEN) return send(res, 401, { error: 'UNAUTHORISED' });
     if (p === '/internal/network') return send(res, 200, network());
     if (p === '/internal/reset' && req.method === 'POST') { store.reset(); return send(res, 200, { reset: true }); }
+    const rv = p.match(/^\/internal\/reviews\/(R-[A-Z0-9]+)$/);
+    if (rv && req.method === 'POST') { const b = await readBody(req); return send(res, 200, await decide(rv[1], b.decision, b.entityId)); }
+    const mg = p.match(/^\/internal\/merges\/(M-[A-Z0-9]+)\/reverse$/);
+    if (mg && req.method === 'POST') return send(res, 200, await reverseMerge(mg[1]));
+    if (p === '/internal/forget' && req.method === 'POST') return send(res, 200, forgetIndex((await readBody(req)).entityId));
     return send(res, 404, { error: 'NOT_FOUND' });
   }
 

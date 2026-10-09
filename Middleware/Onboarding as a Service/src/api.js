@@ -39,3 +39,6 @@ export const removeClient = (handle) => call('DELETE', `/api/v1/clients/${handle
 // platform view
 export const network = () => call('GET', '/internal/network');
 export const resetDemo = () => call('POST', '/internal/reset');
+export const decideReview = (id, decision, entityId) => call('POST', `/internal/reviews/${id}`, { decision, entityId });
+export const reverseMerge = (id) => call('POST', `/internal/merges/${id}/reverse`);
+export const forgetIndex = (entityId) => call('POST', '/internal/forget', { entityId });

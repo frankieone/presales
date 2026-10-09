@@ -11,7 +11,7 @@
  *   log         record what was disclosed to whom
  */
 import crypto from 'node:crypto';
-import { INTERMEDIARIES, PERMITTED_FIELDS, POLICY, SECRET, byId, refName } from './config.mjs';
+import { DUPLICATE_WORKFLOW, INTERMEDIARIES, PERMITTED_FIELDS, POLICY, SECRET, byId, refName } from './config.mjs';
 import * as frankie from './frankie.mjs';
 import { store } from './store.mjs';
 import { schedule } from './queue.mjs';
@@ -116,7 +116,70 @@ function toIndividual(p, intermediary, clientRef) {
 
 const reference = (intermediary, clientRef) => ({ name: refName(intermediary.id), value: clientRef, type: 'CUSTOMER', description: `${intermediary.name} client reference` });
 
-/** An intermediary submits a client: scenarios 1 and 2, and the repeat case. */
+// ── duplicates (scenario 3) ─────────────────────────────────────────
+const dupStep = (run) => (run?.workflowResult?.workflowStepResults || []).find((s) => s.stepName === 'DUPLICATE');
+const openMatches = (run) => (dupStep(run)?.processResults || []).filter((p) => p.class === 'DUPLICATE' && p.result === 'HIT' && !p.manualStatus);
+const matchedOn = (pr) => (pr.supplementaryData?.matchedFields || []).map((f) => f.objectType);
+
+/** The merge policy: identity document and exact date of birth, and nothing else in contention. */
+function meetsMergePolicy(candidates) {
+  if (!POLICY.autoMergeOnDocumentAndDob || candidates.length !== 1) return false;
+  const f = candidates[0].supplementaryData?.matchedFields || [];
+  const exact = (t) => f.some((x) => x.objectType === t && x.matchStrength >= 100);
+  return exact('DOCUMENT') && exact('DATE_OF_BIRTH');
+}
+
+/**
+ * Read the duplicate check on a newly created record. Returns { clear } when
+ * nothing in the platform's network matches, { merge } when the merge policy
+ * is met, or { hold } for a person to decide.
+ */
+async function checkDuplicates(entityId, run) {
+  const matches = openMatches(run);
+  const network = store.networkEntities();
+  network.delete(entityId);
+  const inNetwork = (p) => !POLICY.sharedDemoAccount || network.has(p.supplementaryData?.duplicateEntityId);
+  const outside = matches.filter((p) => !inNetwork(p));
+  const candidates = matches.filter(inNetwork);
+  if (outside.length) {
+    // Other demos' test people on a shared account; tidy them away, best effort.
+    await frankie.resolveDuplicates(entityId, outside.map((p) => p.processResultId), 'FALSE_POSITIVE',
+      'Outside the platform network (shared demo account); not a platform record.').catch(() => {});
+  }
+  if (!candidates.length) return { clear: true };
+  return meetsMergePolicy(candidates) ? { merge: candidates[0] } : { hold: candidates };
+}
+
+/**
+ * Same person: keep the record the platform already holds, retire the new
+ * one, move this intermediary's reference across, and run its verification
+ * on the surviving record. Results are never moved between records.
+ */
+async function mergeInto(retiredId, pr, intermediary, rel, reason, decidedBy) {
+  const survivor = pr.supplementaryData.duplicateEntityId;
+  await frankie.resolveDuplicates(retiredId, [pr.processResultId], 'TRUE_POSITIVE_REJECT', reason);
+  if (rel.referenceId) await frankie.removeReference(retiredId, rel.referenceId).catch(() => {});
+  const patched = await frankie.addReference(survivor, reference(intermediary, rel.clientRef));
+  const run = await frankie.verifyExisting(survivor, intermediary.workflow, intermediary.id);
+  if (rel.matchKey) store.remember(rel.matchKey, survivor);
+  const merge = store.addMerge({
+    id: `M-${Date.now().toString(36).toUpperCase()}`, at: new Date().toISOString(),
+    intermediaryId: intermediary.id, handle: rel.handle, retiredId, survivorId: survivor,
+    processResultId: pr.processResultId, matchedOn: matchedOn(pr), reason, decidedBy, reversedAt: null,
+  });
+  return {
+    merge,
+    changes: {
+      entityId: survivor,
+      referenceId: (patched.individual?.externalReferences || []).find((r) => r.name === refName(intermediary.id))?.referenceId,
+      executionId: run.workflowResult?.workflowExecutionId, workflowStatus: run.workflowResult?.status,
+      reusedRecord: true, mergedFrom: retiredId, completedAt: new Date().toISOString(),
+      ...outcome(run.workflowResult || {}),
+    },
+  };
+}
+
+/** An intermediary submits a client: scenarios 1, 2 and 3, and the repeat case. */
 export async function onboard(intermediary, body) {
   const started = Date.now();
   const { clientRef, consent, person } = body || {};
@@ -143,36 +206,109 @@ export async function onboard(intermediary, body) {
       const run = await frankie.verifyExisting(known, intermediary.workflow, intermediary.id);
       return { entityId: known, reused: true, run, refs: patched.individual?.externalReferences };
     }
-    // Scenario 1: new to the network. Create and verify in one call.
-    const run = await frankie.createAndVerify(toIndividual(person, intermediary, clientRef), intermediary.workflow, intermediary.id);
-    return { entityId: run.individual?.entityId, reused: false, run, refs: run.individual?.externalReferences };
+    // New to the platform's index: create the record and run the platform's
+    // duplicate check in one call. The intermediary's own verification follows.
+    const run = await frankie.createAndVerify(toIndividual(person, intermediary, clientRef), DUPLICATE_WORKFLOW, intermediary.id);
+    return { entityId: run.individual?.entityId, reused: false, created: true, run, refs: run.individual?.externalReferences };
   });
 
   if (!result.entityId) throw new ClientError(502, 'UNAVAILABLE', 'Onboarding is temporarily unavailable.');
-  if (!known) store.remember(key, result.entityId);
 
-  const wr = result.run.workflowResult || {};
   const now = new Date().toISOString();
   const rel = store.add({
     intermediaryId: intermediary.id,
     entityId: result.entityId,
     referenceId: (result.refs || []).find((r) => r.name === refName(intermediary.id))?.referenceId,
-    handle: handleFor(intermediary.id, result.entityId),
+    handle: handleFor(intermediary.id, result.entityId), // fixed for this relationship, even if the record is later merged
+    matchKey: key,
     clientRef,
     name: [person.givenName, person.middleName, person.familyName].filter(Boolean).join(' ').toUpperCase(),
     dateOfBirth: person.dateOfBirth,
+    document: { type: person.document.type, last4: String(person.document.number).slice(-4) },
     workflow: intermediary.workflow,
-    executionId: wr.workflowExecutionId,
-    workflowStatus: wr.status,
     reusedRecord: result.reused,
     method: 'Electronic',
-    completedAt: now, // stamped from this verification, not from any reused evidence
     createdAt: now,
-    updatedAt: now,
-    ...outcome(wr),
   });
+
+  // Scenario 3: the index missed, and FrankieOne's duplicate check found a possible match.
+  const settled = result.created ? await checkDuplicates(result.entityId, result.run) : { clear: true, run: result.run };
+  if (settled.merge) {
+    const { changes } = await mergeInto(result.entityId, settled.merge, intermediary, rel,
+      `Merged automatically: matched on ${matchedOn(settled.merge).join(', ').toLowerCase()} under the merge policy.`, 'Merge policy');
+    store.update(rel, changes);
+  } else if (settled.hold) {
+    const review = store.addReview({
+      id: `R-${Date.now().toString(36).toUpperCase()}`, at: now, intermediaryId: intermediary.id, handle: rel.handle,
+      newEntityId: result.entityId,
+      candidates: settled.hold.map((p) => ({ entityId: p.supplementaryData.duplicateEntityId, processResultId: p.processResultId, matchedOn: matchedOn(p), rules: (p.supplementaryData.matchedRules || []).map((r) => r.name) })),
+      decidedAt: null, decision: null,
+    });
+    store.update(rel, { reviewId: review.id, workflowStatus: 'REVIEW', completedAt: now, ...outcome({ status: 'REVIEW' }) });
+  } else {
+    // Scenario 1 (new to the network) or 2 (already held): this intermediary's own verification.
+    if (!known) store.remember(key, result.entityId);
+    const run = settled.run || await schedule(intermediary.id, result.entityId, () => frankie.verifyExisting(result.entityId, intermediary.workflow, intermediary.id));
+    const wr = run.workflowResult || {};
+    store.update(rel, { executionId: wr.workflowExecutionId, workflowStatus: wr.status, completedAt: now, ...outcome(wr) });
+  }
   store.submitted(intermediary.id, rel.status);
   return heldTo(POLICY.minResponseMs, started, respond(rel, 'onboard'));
+}
+
+// ── compliance decisions (the platform's own staff, never intermediaries) ──
+const relFor = (intermediaryId, handle) => store.allRelationships().find((r) => r.intermediaryId === intermediaryId && r.handle === handle);
+
+/** A compliance officer decides a held possible duplicate: same person (merge) or different people. */
+export async function decide(reviewId, decision, candidateEntityId) {
+  const review = store.review(reviewId);
+  if (!review || review.decidedAt) throw new ClientError(404, 'NOT_FOUND', 'No open review with that id.');
+  const intermediary = byId[review.intermediaryId];
+  const rel = relFor(review.intermediaryId, review.handle);
+  if (decision === 'merge') {
+    const chosen = review.candidates.find((c) => c.entityId === candidateEntityId) || review.candidates[0];
+    const others = review.candidates.filter((c) => c !== chosen).map((c) => c.processResultId);
+    if (others.length) await frankie.resolveDuplicates(review.newEntityId, others, 'FALSE_POSITIVE', 'Compliance: a different person.');
+    const { changes, merge } = await mergeInto(review.newEntityId, { processResultId: chosen.processResultId, supplementaryData: { duplicateEntityId: chosen.entityId, matchedFields: chosen.matchedOn.map((t) => ({ objectType: t })) } },
+      intermediary, rel, 'Compliance: confirmed the same person after comparing the records.', 'Compliance');
+    store.update(rel, { ...changes, reviewId: null });
+    Object.assign(review, { decidedAt: new Date().toISOString(), decision: 'merge', mergeId: merge.id });
+  } else {
+    await frankie.resolveDuplicates(review.newEntityId, review.candidates.map((c) => c.processResultId), 'FALSE_POSITIVE', 'Compliance: different people.');
+    const wr = (await frankie.verifyExisting(review.newEntityId, intermediary.workflow, intermediary.id)).workflowResult || {};
+    if (rel.matchKey) store.remember(rel.matchKey, review.newEntityId);
+    store.update(rel, { reviewId: null, executionId: wr.workflowExecutionId, workflowStatus: wr.status, completedAt: new Date().toISOString(), ...outcome(wr) });
+    Object.assign(review, { decidedAt: new Date().toISOString(), decision: 'different' });
+  }
+  store.touch();
+  return review;
+}
+
+/** A merge proves wrong: restore the retired record and re-run that intermediary's verification on it. */
+export async function reverseMerge(mergeId) {
+  const merge = store.merge(mergeId);
+  if (!merge || merge.reversedAt) throw new ClientError(404, 'NOT_FOUND', 'No active merge with that id.');
+  const intermediary = byId[merge.intermediaryId];
+  const rel = relFor(merge.intermediaryId, merge.handle);
+  await frankie.resolveDuplicates(merge.retiredId, [merge.processResultId], 'FALSE_POSITIVE', 'Merge reversed: different people.');
+  if (rel.referenceId) await frankie.removeReference(merge.survivorId, rel.referenceId).catch(() => {});
+  const patched = await frankie.addReference(merge.retiredId, reference(intermediary, rel.clientRef));
+  const wr = (await frankie.verifyExisting(merge.retiredId, intermediary.workflow, intermediary.id)).workflowResult || {};
+  if (rel.matchKey) store.remember(rel.matchKey, merge.retiredId);
+  store.update(rel, {
+    entityId: merge.retiredId, mergedFrom: null, reusedRecord: false,
+    referenceId: (patched.individual?.externalReferences || []).find((r) => r.name === refName(intermediary.id))?.referenceId,
+    executionId: wr.workflowExecutionId, workflowStatus: wr.status, completedAt: new Date().toISOString(), ...outcome(wr),
+  });
+  merge.reversedAt = new Date().toISOString();
+  store.touch();
+  return merge;
+}
+
+/** Presenter tool: drop a record's index entries, as if an existing client had never been indexed. */
+export function forgetIndex(entityId) {
+  store.forget(entityId);
+  return { forgotten: entityId };
 }
 
 /** Re-read one intermediary's own verification, e.g. after compliance resolves it in the Portal. */
@@ -214,6 +350,7 @@ export function network() {
       intermediary: byId[r.intermediaryId]?.name, intermediaryId: r.intermediaryId,
       clientRef: r.clientRef, handle: r.handle, workflow: r.workflow, workflowStatus: r.workflowStatus,
       status: r.status, reusedRecord: r.reusedRecord, createdAt: r.createdAt, removedAt: r.removedAt || null,
+      mergedFrom: r.mergedFrom || null, reviewId: r.reviewId || null, document: r.document,
     });
   }
   const active = new Set(rels.filter((r) => !r.removedAt).map((r) => r.intermediaryId));
@@ -235,5 +372,19 @@ export function network() {
     disclosures: store.disclosures().slice(-40).reverse().map((d) => ({ ...d, intermediary: byId[d.intermediaryId]?.name })),
     policy: POLICY,
     permittedFields: PERMITTED_FIELDS,
+    reviews: store.reviews().filter((r) => !r.decidedAt).map((r) => {
+      const rel = store.allRelationships().find((x) => x.intermediaryId === r.intermediaryId && x.handle === r.handle);
+      return {
+        ...r,
+        intermediary: byId[r.intermediaryId]?.name,
+        submitted: rel && { name: rel.name, dateOfBirth: rel.dateOfBirth, document: rel.document, clientRef: rel.clientRef },
+        candidates: r.candidates.map((c) => {
+          const held = store.allRelationships().filter((x) => x.entityId === c.entityId && !x.removedAt);
+          return { ...c, name: held[0]?.name, dateOfBirth: held[0]?.dateOfBirth, document: held[0]?.document,
+            heldBy: held.map((x) => byId[x.intermediaryId]?.name) };
+        }),
+      };
+    }),
+    merges: store.merges().slice().reverse().map((m) => ({ ...m, intermediary: byId[m.intermediaryId]?.name })),
   };
 }

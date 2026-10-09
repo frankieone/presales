@@ -42,9 +42,10 @@ export const PLATFORM = {
  * a config edit, not a build.
  */
 export const POLICY = {
-  // Every intermediary response takes at least this long, so a reused
-  // onboarding can't be told apart from a fresh one by timing.
-  minResponseMs: Number(setting('MIN_RESPONSE_MS', '6000')),
+  // Every intermediary onboarding response takes at least this long, so a
+  // reused onboarding can't be told apart from a fresh one by timing. Set it
+  // above the slowest normal path (a new record runs two workflows).
+  minResponseMs: Number(setting('MIN_RESPONSE_MS', '10000')),
   // Submissions per intermediary per minute, against probing.
   ratePerMinute: Number(setting('RATE_PER_MINUTE', '30')),
   // How long checks already held count towards another onboarding. Applied in
@@ -52,6 +53,15 @@ export const POLICY = {
   reuseWindowDays: Number(setting('REUSE_WINDOW_DAYS', '90')),
   // Concurrent FrankieOne calls across every intermediary (the shared limit).
   maxConcurrent: Number(setting('MAX_CONCURRENT', '4')),
+  // Merge without a person only when a duplicate match includes the identity
+  // document and an exact date of birth, and there is a single candidate.
+  // Everything else is held for compliance.
+  autoMergeOnDocumentAndDob: setting('AUTO_MERGE', 'true') !== 'false',
+  // On a shared demo account, FrankieOne's duplicate check also matches
+  // records that aren't the platform's (other demos' test people). Those are
+  // set aside automatically. On a dedicated account, set this to false: every
+  // record is the platform's, so every match is a candidate.
+  sharedDemoAccount: setting('SHARED_DEMO_ACCOUNT', 'true') !== 'false',
 };
 
 /**
@@ -93,6 +103,14 @@ for (let i = 0; GENERATED.length < 300 - NAMED.length; i++) {
 }
 
 export const INTERMEDIARIES = [...NAMED, ...GENERATED];
+
+/**
+ * The platform's safety net: a workflow with FrankieOne's duplicate check,
+ * run once on every record the platform creates, before that intermediary's
+ * own verification. It catches the same person the identity index missed,
+ * for example someone who used a different document at each intermediary.
+ */
+export const DUPLICATE_WORKFLOW = setting('DUPLICATE_WORKFLOW', 'AUS-Basic2V-TwoPlus-Duplicate');
 export const NAMED_IDS = NAMED.map((i) => i.id);
 export const byId = Object.fromEntries(INTERMEDIARIES.map((i) => [i.id, i]));
 
