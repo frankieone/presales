@@ -11,6 +11,7 @@ import Application from './pages/Application';
 import People from './pages/People';
 import Overview from './pages/Overview';
 import Security from './pages/Security';
+import Payments from './pages/Payments';
 import Reset from './pages/Reset';
 import DeviceCheck from './pages/DeviceCheck';
 import MemberConfirm from './pages/MemberConfirm';
@@ -49,6 +50,7 @@ export default function App() {
                 <Route path="/people" element={<ProtectedRoute><People /></ProtectedRoute>} />
               )}
               <Route path="/dashboard" element={<ProtectedRoute><Overview /></ProtectedRoute>} />
+              <Route path="/payments" element={<ProtectedRoute><Payments /></ProtectedRoute>} />
               <Route path="/security" element={<ProtectedRoute><Security /></ProtectedRoute>} />
               <Route path="*" element={<Navigate to="/register" replace />} />
             </Routes>

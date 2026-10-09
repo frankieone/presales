@@ -228,6 +228,27 @@ export async function updatePerson(entityId, { dateOfBirth, address, email, phon
 }
 
 /**
+ * Change a customer's email or mobile in place. Sending a new address without
+ * the existing one's id adds a second address beside the old one, and the
+ * fraud checks keep scoring the old, clean one; editing by id replaces it.
+ */
+export async function changeContact(entityId, { email, phone }) {
+  const data = await call('GET', `/v2/individuals/${entityId}`);
+  const ind = data?.individual || {};
+  const individual = {};
+  if (email) {
+    const current = (ind.emailAddresses || []).find((e) => e.isPreferred) || ind.emailAddresses?.[0];
+    individual.emailAddresses = [{ ...(current?.emailAddressId ? { emailAddressId: current.emailAddressId } : {}), email, type: 'PERSONAL', isPreferred: true }];
+  }
+  if (phone) {
+    const current = (ind.phoneNumbers || []).find((p) => p.isPreferred) || ind.phoneNumbers?.[0];
+    individual.phoneNumbers = [{ ...(current?.phoneNumberId ? { phoneNumberId: current.phoneNumberId } : {}), number: phone, type: 'MOBILE', country: 'AUS', isPreferred: true }];
+  }
+  if (!Object.keys(individual).length) return null;
+  return call('PATCH', `/v2/individuals/${entityId}`, { individual });
+}
+
+/**
  * A member is only checkable once they have a date of birth — identity matching
  * has nothing to work with before that. This is what separates a placeholder
  * from a complete record.

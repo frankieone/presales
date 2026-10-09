@@ -1,12 +1,20 @@
 import { useState } from 'react';
-import { ShieldCheck, Lock, Loader2, AlertCircle, CheckCircle } from 'lucide-react';
+import { ShieldCheck, Lock, Loader2, AlertCircle, CheckCircle, Mail } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useRisk } from '../context/RiskContext';
 import { recordActivity } from '../services/api';
+import { changeContact, runFraudChecks } from '../services/entities';
+import { readRegistration, registerDeviceSession, saveRegistration } from '../services/journey';
+
+const field = 'w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500';
 
 export default function Security() {
-  const { user, sessionToken } = useAuth();
+  const { user } = useAuth();
   const { buildRiskAttributes } = useRisk();
+  const registration = readRegistration();
+  const [email, setEmail] = useState(registration?.email || '');
+  const [mobile, setMobile] = useState(registration?.mobile || '');
+  const [savingContact, setSavingContact] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -35,7 +43,8 @@ export default function Security() {
     try {
       // Record PASSWORD_CHANGE activity - triggers monitoring alert
       try {
-        await recordActivity(user.userId, sessionToken, 'PASSWORD_CHANGE', 'INDIVIDUAL', buildRiskAttributes());
+        const token = await registerDeviceSession(user.userId, 'password_change');
+        await recordActivity(user.userId, token, 'PASSWORD_CHANGE', 'INDIVIDUAL', buildRiskAttributes());
       } catch (activityErr) {
         console.warn('Activity recording failed (non-blocking):', activityErr);
       }
@@ -50,6 +59,41 @@ export default function Security() {
       setError('Failed to change password. Please try again.');
     } finally {
       setSaving(false);
+    }
+  };
+
+  /**
+   * Changing the email or mobile is the classic first move in an account
+   * takeover. Each change goes to FrankieOne as an event, the record is edited
+   * in place, and the fraud checks run again on the new details, so a
+   * high-risk email or number is flagged in the Portal. The customer only sees
+   * that their details were saved.
+   */
+  const handleChangeContact = async () => {
+    setError('');
+    setSuccess('');
+    const changedEmail = email.trim() && email.trim() !== registration?.email ? email.trim() : null;
+    const changedMobile = mobile.replace(/\s/g, '') && mobile.replace(/\s/g, '') !== registration?.mobile ? mobile.replace(/\s/g, '') : null;
+    if (!changedEmail && !changedMobile) {
+      setError('Nothing has changed.');
+      return;
+    }
+    setSavingContact(true);
+    try {
+      const token = await registerDeviceSession(user.userId, 'account_update');
+      await changeContact(user.userId, { email: changedEmail, phone: changedMobile });
+      if (changedEmail) await recordActivity(user.userId, token, 'EMAIL_CHANGE', 'INDIVIDUAL', buildRiskAttributes());
+      if (changedMobile) await recordActivity(user.userId, token, 'PHONE_CHANGE', 'INDIVIDUAL', buildRiskAttributes());
+      saveRegistration({ ...registration, ...(changedEmail ? { email: changedEmail } : {}), ...(changedMobile ? { mobile: changedMobile } : {}) });
+      // Re-screen the new details in the background; the result is for the Portal only.
+      runFraudChecks(user.userId).catch((err) => console.warn('Re-screen failed (non-blocking):', err));
+      setSuccess('Your contact details have been updated.');
+      setTimeout(() => setSuccess(''), 4000);
+    } catch (err) {
+      console.error('Contact change failed:', err);
+      setError("We couldn't update your details. Please try again.");
+    } finally {
+      setSavingContact(false);
     }
   };
 
@@ -72,6 +116,32 @@ export default function Security() {
           <p className="text-sm text-green-700">{success}</p>
         </div>
       )}
+
+      {/* Contact details */}
+      <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <div className="flex items-center gap-2 mb-4">
+          <Mail className="w-5 h-5 text-primary-600" />
+          <h3 className="text-lg font-semibold text-gray-900">Contact details</h3>
+        </div>
+        <div className="space-y-4 max-w-md">
+          <div>
+            <label htmlFor="sec-email" className="block text-sm font-medium text-gray-700 mb-1">Email address</label>
+            <input id="sec-email" type="email" className={field} value={email} onChange={(e) => setEmail(e.target.value)} />
+          </div>
+          <div>
+            <label htmlFor="sec-mobile" className="block text-sm font-medium text-gray-700 mb-1">Mobile number</label>
+            <input id="sec-mobile" type="tel" className={field} value={mobile} onChange={(e) => setMobile(e.target.value)} />
+          </div>
+          <button
+            onClick={handleChangeContact}
+            disabled={savingContact}
+            className="px-6 py-3 bg-primary-600 hover:bg-primary-700 text-white font-medium rounded-lg transition-colors disabled:opacity-50 flex items-center gap-2"
+          >
+            {savingContact ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
+            Save contact details
+          </button>
+        </div>
+      </div>
 
       {/* Password Change */}
       <div className="bg-white rounded-xl border border-gray-200 p-6">

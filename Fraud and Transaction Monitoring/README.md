@@ -1,6 +1,6 @@
 # Fraud and Transaction Monitoring
 
-Working onboarding demos that show FrankieOne's email, phone, device and IP checks, and what they look like in the FrankieOne Portal. One shared app runs as three placeholder-branded examples:
+Working demos that show FrankieOne's email, phone, device and IP checks at onboarding, transaction monitoring and account takeover signals afterwards, and what they look like in the FrankieOne Portal. One shared app runs as three placeholder-branded examples:
 
 | Example | Brand | Port | Journey |
 |---|---|---|---|
@@ -59,6 +59,8 @@ Every run first checks the account the demo depends on, printing pass or fail pe
 - a device session can be registered
 - the Sardine rules still fire: a `highrisk.com` email and `0403 666 666` both come back HIGH, and clean details pass
 - a hosted ID capture link can be generated
+- a payment over $10,000 raises a monitoring alert (`ACTIVITY_FRAUD`)
+- an email changed to a `highrisk.com` address is re-screened and comes back HIGH
 
 The servers start even if a check fails, but read the failures before you present. Each run creates a few throwaway entities named `PREFLIGHT …` in the account. Skip the checks with `node scripts/start.js all --skip-checks`.
 
@@ -69,6 +71,9 @@ The servers start even if a check fails, but read the failures before you presen
 | Registration, login and submission (the person at the keyboard) | `Device-Email-Phone-NoAML` | Email, phone, device and IP; each run covers every device session so far |
 | A related person is added by someone else | `Email-Phone-NoAML` | Email and phone only, no KYC, so a flagged person is held before any identity check is paid for |
 | A related person verifies on their own phone | `Device-Email-Phone-NoAML`, then hosted ID capture | Their own device and IP first, then ID photo and selfie in the same session |
+| A payment is made (**Payments** or **Withdrawals** page) | Transaction activity → the account's monitoring workflow | The payment under a fresh device session. Over $10,000 is rated high and raises `ACTIVITY_FRAUD` for review. Over the step-up amount (also $10,000) the customer is asked to verify their ID before it's released |
+| Email or mobile changed (**Security** page) | `EMAIL_CHANGE` / `PHONE_CHANGE` activity, then `Device-Email-Phone-NoAML` | The change is sent as an event and the record edited in place, then the fraud checks run again on the new details |
+| Password changed (**Security** page) | `PASSWORD_CHANGE` activity | Sent as an event under a fresh device session |
 
 ## Presenter panel
 
@@ -90,7 +95,8 @@ Applicants are FrankieOne's [published UAT test identities](https://docs.frankie
 The demos expect these on the FrankieOne account in `.env.local`:
 
 - **Workflows:** `Device-Email-Phone-NoAML` (fraud step with device, email and phone) and `Email-Phone-NoAML` (fraud step with email and phone only), both without KYC or AML steps.
-- **Sardine rules, Live (not Shadow):** one rating an email at `highrisk.com` as high risk, and one rating a phone number containing `666666` as high risk.
+- **Sardine rules, Live (not Shadow):** one rating an email at `highrisk.com` as high risk, one rating a phone number containing `666666` as high risk, and "Transaction amount above $10,000" for payments.
+- **A monitoring workflow** that raises activity issues (on Sales Demo V2, `Basic-Monitoring-CA`).
 - **OneSDK:** embedded sessions enabled, with `VITE_FRANKIE_BFF_URL` pointing at the environment's session server.
 
 The start-up checks confirm each of these.
@@ -101,4 +107,7 @@ The start-up checks confirm each of these.
 - **Device capture:** a member's device is captured by OneSDK embedded in the app's own page (`/m/<entity>`), which then hands off to hosted ID capture. A hosted link on its own did not return device data in our testing.
 - **No return page after ID capture:** plain `http://` return addresses are rejected, so the person stays on the hosted flow's own completion screen.
 - **Network:** the dev server listens on the LAN so phones can reach it, and the API key is in the browser bundle. Fine on a trusted network; be careful on shared Wi-Fi. Phones must be on the same Wi-Fi as the laptop.
+- **Changing an email or phone:** send the existing address's id with the new value. Without it the API adds a second address, and the checks keep scoring the old one.
+- **Activities:** a bank transfer needs an account number (`pan`) on both sides, and an empty `customAttributes` object makes the API return 500.
+- **Combinations of events** (a contact change, then a new payee, then a large payment) are a Sardine rule set on the account, not something the app decides. The demo shows each signal; the rules that join them up are configured per customer.
 - `/device-check/<entity>` is a bare embedded-OneSDK test page, kept for troubleshooting.

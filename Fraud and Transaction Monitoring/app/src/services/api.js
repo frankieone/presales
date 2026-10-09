@@ -61,7 +61,8 @@ export async function recordActivity(userId, sessionToken, activityType, entityT
     activityType: 'EVENT',
     eventType: activityType,
   };
-  if (riskAttributes) {
+  // An empty customAttributes object makes the API return 500.
+  if (riskAttributes && Object.keys(riskAttributes).length) {
     detail.customAttributes = riskAttributes;
   }
 
@@ -80,6 +81,56 @@ export async function recordActivity(userId, sessionToken, activityType, entityT
     const errorBody = await response.json().catch(() => ({}));
     console.error('[API] Record activity failed:', response.status, errorBody);
     throw new Error(`Failed to record activity: ${response.status} - ${errorBody.errorMsg || JSON.stringify(errorBody)}`);
+  }
+  return response.json();
+}
+
+/**
+ * Send a payment out of the customer's account to FrankieOne as a transaction
+ * activity. Monitoring runs over it on the platform: on the demo account a
+ * Sardine rule rates anything over $10,000 high, and the monitoring workflow
+ * raises an ACTIVITY_FRAUD issue for review. Nothing comes back to show the
+ * customer.
+ *
+ * A bank transfer needs an account number (pan) on both sides, or the API
+ * rejects it. These are fixed demo numbers, not real accounts.
+ */
+export async function recordTransaction(entityId, sessionToken, { amount, payee }) {
+  const detail = {
+    activityType: 'TRANSACTION',
+    transaction: {
+      amount,
+      currency: 'AUD',
+      currencyType: 'FIAT',
+      transferMethod: 'BANK_TRANSFER',
+      counterpartyAmount: amount,
+      counterpartyCurrency: 'AUD',
+      counterpartyCurrencyType: 'FIAT',
+      counterpartyTransferMethod: 'BANK_TRANSFER',
+      transactionType: 'WITHDRAWAL',
+      transactionIdentifier: `TX-${Date.now().toString(36).toUpperCase()}`,
+      account: { type: 'SAVINGS', pan: '331387321', maskedPan: '******321', name: 'Demo account', class: 'PERSONAL' },
+    },
+    counterparty: {
+      entityName: payee || 'Unknown payee',
+      account: { type: 'SAVINGS', pan: '123783133', maskedPan: '******133', name: payee || 'Payee account', class: 'PERSONAL' },
+    },
+  };
+
+  const response = await fetch(getProxyUrl('/v2/activities'), {
+    method: 'POST',
+    headers: buildHeaders(),
+    body: JSON.stringify({
+      activity: {
+        session: { token: sessionToken },
+        party: { entityId, entityType: 'INDIVIDUAL' },
+        detail,
+      },
+    }),
+  });
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({}));
+    throw new Error(`Failed to record transaction: ${response.status} - ${errorBody.errorMsg || JSON.stringify(errorBody)}`);
   }
   return response.json();
 }

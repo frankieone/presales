@@ -1,5 +1,5 @@
 import { NavLink, useNavigate } from 'react-router-dom';
-import { FileText, Landmark, LogOut, Menu, ShieldCheck, Users, X } from 'lucide-react';
+import { ArrowLeftRight, FileText, Landmark, LogOut, Menu, ShieldCheck, Users, X } from 'lucide-react';
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { vertical } from '../config';
@@ -12,6 +12,7 @@ const navItems = [
   { path: '/application', label: 'Application', icon: FileText },
   ...(vertical.people.enabled ? [{ path: '/people', label: vertical.people.navLabel, icon: Users }] : []),
   { path: '/dashboard', label: vertical.overview.title, icon: Landmark },
+  { path: '/payments', label: vertical.payments.navLabel, icon: ArrowLeftRight },
   { path: '/security', label: 'Security', icon: ShieldCheck },
 ];
 

@@ -126,6 +126,17 @@ export const VERTICALS = {
       fallbackName: 'a new business account',
     },
     overview: { title: 'Your business', structureTitle: 'Your business', structureBlurb: 'The business and each of its directors and signatories.' },
+    payments: {
+      navLabel: 'Payments',
+      title: 'Pay someone',
+      intro: 'Pay a supplier or another account from your business account.',
+      fromLabel: 'Business everyday account',
+      payeeLabel: 'Payee',
+      payeePlaceholder: 'NORTHSIDE SUPPLIES PTY LTD',
+      button: 'Pay now',
+      done: 'Payment of {amount} to {payee} is on its way.',
+      stepUpOver: 10000,
+    },
     scenarios: [
       {
         id: 'testone-trading',
@@ -168,6 +179,17 @@ export const VERTICALS = {
     people: { enabled: false },
     member: null,
     overview: { title: 'Your membership' },
+    payments: {
+      navLabel: 'Withdrawals',
+      title: 'Withdraw or roll over',
+      intro: "Move money out of your super: a rollover to another fund, or a withdrawal once you've met a condition of release.",
+      fromLabel: 'Your super account',
+      payeeLabel: 'Pay to',
+      payeePlaceholder: 'Your nominated bank account',
+      button: 'Request payment',
+      done: 'Your request to pay {amount} to {payee} has been received.',
+      stepUpOver: 10000,
+    },
     scenarios: [
       {
         id: 'testone',
@@ -243,6 +265,17 @@ export const VERTICALS = {
       fallbackName: 'your new self managed super fund',
     },
     overview: { title: 'Your fund', structureTitle: 'Your fund', structureBlurb: 'The fund, its trustee company and each of its members.' },
+    payments: {
+      navLabel: 'Payments',
+      title: 'Make a payment from the fund',
+      intro: "Pay an investment, an expense or a member's benefit from the fund's bank account.",
+      fromLabel: 'Fund cash account',
+      payeeLabel: 'Payee',
+      payeePlaceholder: 'NORTHSIDE PROPERTY TRUST',
+      button: 'Make payment',
+      done: 'Payment of {amount} to {payee} is on its way.',
+      stepUpOver: 10000,
+    },
     scenarios: [
       {
         id: 'testone',
@@ -257,4 +290,4 @@ export const VERTICALS = {
 };
 
 /** Fields every vertical must define — checked by the start-up tests. */
-export const REQUIRED_KEYS = ['id', 'brand', 'site', 'application', 'people', 'overview', 'scenarios'];
+export const REQUIRED_KEYS = ['id', 'brand', 'site', 'application', 'people', 'overview', 'payments', 'scenarios'];

@@ -28,3 +28,9 @@ Needs `../app/.env.local` — see the [main README](../README.md#setup).
    - **Jordan Reed**: `0403 666 666` → *Under review*.
    - **Casey Morgan**: clean → **Send confirmation link**. Scan Casey's QR code from the presenter panel (shield icon, bottom right) on a phone on the same Wi-Fi, and complete the device check and ID capture.
 4. **Submit application**, then show the fund, its members and each result in the FrankieOne Portal.
+### After onboarding: payments and account takeover
+
+5. **Payments** → pay **$2,500** to anyone: it goes through, and nothing is flagged.
+6. Pay **$15,000**: the customer is asked to verify their ID before it's released, and the Portal shows the payment rated high on "Transaction amount above $10,000", with an `ACTIVITY_FRAUD` alert for review.
+7. **Account takeover:** **Security** → change the email to `james.testone@highrisk.com` → **Save contact details**. The customer only sees "updated". In the Portal, the email change is rated high and the re-run fraud check comes back Review on the new email. A payment straight after sits next to that alert.
+

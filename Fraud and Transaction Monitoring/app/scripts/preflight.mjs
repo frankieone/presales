@@ -204,6 +204,55 @@ await check('Hosted ID capture link can be generated', async () => {
   assert(status === 200 && json.url, `hostedUrl returned ${status}`);
 });
 
+// ── after onboarding: transactions and account takeover ─────────────
+async function monitoringIssues(entityId) {
+  for (let i = 0; i < 8; i++) {
+    await new Promise((r) => setTimeout(r, 3000));
+    const { json } = await api('GET', `/v2/individuals/${entityId}`);
+    const wf = (json.serviceProfiles || []).flatMap((sp) => sp.workflowSummaries || []).find((w) => w.lifecyclePhase === 'MONITORING');
+    if (wf) return (wf.issues || []).map((x) => x.issue);
+  }
+  return [];
+}
+async function payment(entityId, amount) {
+  const { json: s } = await api('POST', `/v2/individuals/${entityId}/sessions`, { session: { providerName: 'sardine' } });
+  const account = (name, pan) => ({ type: 'SAVINGS', pan, maskedPan: `******${pan.slice(-3)}`, name, class: 'PERSONAL' });
+  return api('POST', '/v2/activities', { activity: {
+    session: { token: s.session?.token },
+    party: { entityId, entityType: 'INDIVIDUAL' },
+    detail: {
+      activityType: 'TRANSACTION',
+      transaction: {
+        amount, currency: 'AUD', currencyType: 'FIAT', transferMethod: 'BANK_TRANSFER',
+        counterpartyAmount: amount, counterpartyCurrency: 'AUD', counterpartyCurrencyType: 'FIAT',
+        counterpartyTransferMethod: 'BANK_TRANSFER', transactionType: 'WITHDRAWAL',
+        transactionIdentifier: `preflight-${Date.now()}`, account: account('Demo account', '331387321'),
+      },
+      counterparty: { entityName: 'PREFLIGHT PAYEE', account: account('Payee account', '123783133') },
+    },
+  } });
+}
+
+await check('Payment over $10,000 raises a monitoring alert', async () => {
+  const id = await person('PREFLIGHT', 'PAYMENT', { email: 'preflight.payment@example.com', phone: '0412345678' });
+  const { status } = await payment(id, 15000);
+  assert(status === 200, `transaction returned ${status}`);
+  const issues = await monitoringIssues(id);
+  assert(issues.includes('ACTIVITY_FRAUD'), 'no ACTIVITY_FRAUD issue — is the "Transaction amount above $10,000" rule Live in Sardine, and a monitoring workflow set up?');
+  return 'ACTIVITY_FRAUD for review';
+});
+
+await check('Changed email is re-screened and flagged', async () => {
+  const id = await person('PREFLIGHT', 'TAKEOVER', { email: 'preflight.takeover@example.com', phone: '0412345678' });
+  const { json } = await api('GET', `/v2/individuals/${id}`);
+  const current = json.individual?.emailAddresses?.[0];
+  const { status } = await api('PATCH', `/v2/individuals/${id}`, { individual: { emailAddresses: [{ emailAddressId: current?.emailAddressId, email: DEMO_FLAGS.email, type: 'PERSONAL', isPreferred: true }] } });
+  assert(status === 200, `email change returned ${status}`);
+  const r = await fraudResult(id, 'Email-Phone-NoAML');
+  assert(r.email === 'HIGH', `email came back ${r.email} after the change`);
+  return `email HIGH, workflow ${r.status}`;
+});
+
 const failed = results.filter((r) => !r.ok);
 console.log(failed.length
   ? `\n${red(`${failed.length} of ${results.length} checks failed.`)} The demo may not behave as expected.\n`
