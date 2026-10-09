@@ -1,0 +1,10 @@
+{
+  "name": "fraud-demo-banking",
+  "private": true,
+  "description": "Starts the shared fraud demo (../app) as the Banking example on port 8093.",
+  "scripts": {
+    "setup": "npm --prefix ../app install",
+    "dev": "npm --prefix ../app run banking",
+    "test": "npm --prefix ../app test"
+  }
+}

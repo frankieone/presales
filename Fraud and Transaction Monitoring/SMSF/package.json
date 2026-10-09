@@ -1,0 +1,10 @@
+{
+  "name": "fraud-demo-smsf",
+  "private": true,
+  "description": "Starts the shared fraud demo (../app) as the SMSF example on port 8095.",
+  "scripts": {
+    "setup": "npm --prefix ../app install",
+    "dev": "npm --prefix ../app run smsf",
+    "test": "npm --prefix ../app test"
+  }
+}
