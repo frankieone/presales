@@ -42,6 +42,15 @@ Every onboarding response takes at least the minimum response time (10 seconds b
 
 **Different people** on a held review keeps both records and verifies the new one on its own.
 
+### Decisions: sign-off, history and time on hold
+
+Platform staff sign in by name (two demo staff: Priya Shah, compliance officer, and Tom Nguyen, compliance analyst; in production, staff SSO). Every duplicate decision and every reversal needs a reason, and records who made it, their role and when. The reason and the name are also written to FrankieOne with the decision, so the record's own audit trail shows who signed it off.
+
+**Decisions** has two views:
+
+- **Waiting**: oldest first. Each held duplicate is a client whose onboarding is on hold, so each shows how long it has been waiting, amber past half the decision target and red when overdue (`DECISION_TARGET_MINUTES`, 60 by default). The bar above the list shows the oldest wait and how many are overdue, and the Decisions badge in the sidebar turns red when any are.
+- **Decided**: every decision, newest first, including merges the policy made on its own. Each shows the outcome, who signed it off and why, how long the client was on hold, any reversal (who, when, why), and both records side by side as they are now. A merge can be reversed from here.
+
 ### Evidence reuse: one set of checks across intermediaries
 
 When a person the platform already holds is onboarded by another intermediary, merged in after a duplicate decision, or re-checked (**…** → **Re-run checks**), the platform first looks for a passed run on the record that it can rely on: finished within the reuse window (`REUSE_WINDOW_DAYS`, 90 by default) and with every check the intermediary's workflow needs among its passed checks (`REQUIRED_CHECKS` in `server/config.mjs`; blocklist, KYC and AML for both demo workflows). If there is one, no new checks run. A comment on the FrankieOne record names the run relied on, so the audit trail is complete.

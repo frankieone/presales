@@ -69,6 +69,8 @@ export const POLICY = {
   // record is the platform's, so every match is a candidate.
   sharedDemoAccount: setting('SHARED_DEMO_ACCOUNT', 'true') !== 'false',
   // Whether an intermediary sees the risk score from its own verifications, or the level only.
+  // How long a held duplicate should wait for a person before it counts as overdue.
+  decisionTargetMinutes: Number(setting('DECISION_TARGET_MINUTES', '60')),
   shareRiskScore: setting('SHARE_RISK_SCORE', 'true') !== 'false',
   // Whether an intermediary sees the FrankieOne entity ID. It's the same for every intermediary
   // holding a client, so two intermediaries comparing IDs could tell they share one. Off hides it.
@@ -132,6 +134,15 @@ export const REQUIRED_CHECKS = {
   'AUS-Basic2V-TwoPlusID': ['MATCHLIST', 'KYC', 'AML'],
 };
 export const requiredChecks = (workflow) => REQUIRED_CHECKS[workflow] || ['MATCHLIST', 'KYC', 'AML'];
+
+/**
+ * The platform's compliance staff. Each signs in separately, so every
+ * decision records who made it. In production this comes from staff SSO.
+ */
+export const PLATFORM_STAFF = [
+  { id: 'priya', name: 'Priya Shah', role: 'Compliance officer' },
+  { id: 'tom', name: 'Tom Nguyen', role: 'Compliance analyst' },
+];
 
 export const DUPLICATE_WORKFLOW = setting('DUPLICATE_WORKFLOW', 'AUS-Basic2V-TwoPlus-Duplicate');
 /** OneSDK flow for the hosted ID check (document photo and selfie) an intermediary can send a client. */

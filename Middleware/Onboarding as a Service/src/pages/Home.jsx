@@ -8,7 +8,7 @@ import { BrandLogo } from '../components/ui';
 export default function Home({ demo }) {
   const navigate = useNavigate();
   const asIntermediary = (im) => { setSession({ role: 'intermediary', token: im.token, id: im.id }); navigate('/console'); };
-  const asPlatform = () => { setSession({ role: 'platform', token: demo.operatorToken }); navigate('/platform'); };
+  const asPlatform = (staff) => { setSession({ role: 'platform', token: staff.token, id: staff.id }); navigate('/platform'); };
   // /?as=northgate opens that intermediary's console straight away (used by the Branding page).
   const [params] = useSearchParams();
   useEffect(() => {
@@ -77,17 +77,23 @@ export default function Home({ demo }) {
         ))}
       </div>
 
-      <button onClick={asPlatform}
-        className="mt-6 w-full text-left bg-navy text-white rounded-2xl p-6 flex items-center justify-between gap-6 hover:opacity-95 transition">
+      <div className="mt-6 w-full bg-navy text-white rounded-2xl p-6">
         <span className="flex items-center gap-4">
           <span className="w-11 h-11 rounded-xl bg-brand/15 text-brand flex items-center justify-center shrink-0"><ShieldCheck className="w-6 h-6" /></span>
           <span>
             <span className="block text-[15px] font-semibold">Platform operations and compliance</span>
-            <span className="block mt-0.5 text-sm text-slate-300">Every record, relationship and decision across the network. Never visible to intermediaries.</span>
+            <span className="block mt-0.5 text-sm text-slate-300">Every record, relationship and decision across the network. Never visible to intermediaries. Sign in as a staff member: every decision records who made it.</span>
           </span>
         </span>
-        <ArrowRight className="w-5 h-5 shrink-0" />
-      </button>
+        <div className="mt-5 grid sm:grid-cols-2 gap-3">
+          {demo.staff.map((s) => (
+            <button key={s.id} onClick={() => asPlatform(s)} className="text-left rounded-xl bg-white/5 hover:bg-white/10 ring-1 ring-white/10 px-4 py-3 flex items-center justify-between gap-3 transition">
+              <span><span className="block text-[14px] font-medium">{s.name}</span><span className="block text-[12px] text-slate-400">{s.role}</span></span>
+              <ArrowRight className="w-4 h-4 shrink-0" />
+            </button>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

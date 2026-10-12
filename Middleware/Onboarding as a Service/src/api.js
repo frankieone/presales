@@ -45,8 +45,10 @@ export const removeClient = (handle) => call('DELETE', `/api/v1/clients/${handle
 export const network = () => call('GET', '/internal/network');
 export const resetDemo = () => call('POST', '/internal/reset');
 export const reviewComparison = (id) => call('GET', `/internal/reviews/${id}/comparison`);
-export const decideReview = (id, decision, entityId) => call('POST', `/internal/reviews/${id}`, { decision, entityId });
-export const reverseMerge = (id) => call('POST', `/internal/merges/${id}/reverse`);
+export const decideReview = (id, decision, entityId, note) => call('POST', `/internal/reviews/${id}`, { decision, entityId, note });
+export const reverseMerge = (id, note) => call('POST', `/internal/merges/${id}/reverse`, { note });
+export const compareRecords = (a, b) => call('GET', `/internal/compare?a=${a}&b=${b}`);
+export const platformMe = () => call('GET', '/internal/me');
 export const getEntityFile = (entityId) => call('GET', `/internal/entities/${entityId}/file`);
 export const addEntityComment = (entityId, text) => call('POST', `/internal/entities/${entityId}/comments`, { text });
 export const setPolicy = (changes) => call('PUT', '/internal/policy', changes);

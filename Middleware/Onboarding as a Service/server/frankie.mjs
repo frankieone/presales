@@ -63,8 +63,8 @@ export const removeReference = (entityId, referenceId) =>
  * both stay. TRUE_POSITIVE_REJECT: same person, keep the existing record and
  * retire this one. Setting FALSE_POSITIVE on a confirmed match reverses it.
  */
-export const resolveDuplicates = (entityId, processResultIds, manualStatus, text) =>
-  call('PATCH', `/v2/individuals/${entityId}/results/duplicate`, { processResults: processResultIds, manualStatus, comment: { text } });
+export const resolveDuplicates = (entityId, processResultIds, manualStatus, text, author) =>
+  call('PATCH', `/v2/individuals/${entityId}/results/duplicate`, { processResults: processResultIds, manualStatus, comment: { text } }, author ? 'platform' : undefined, author);
 
 // ── businesses ──────────────────────────────────────────────────────
 /** Create a business record. organizationType is free text: COMPANY, TRUST, PARTNERSHIP, OTHER. */

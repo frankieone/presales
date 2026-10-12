@@ -462,6 +462,15 @@ async function personProfile(entityId) {
   };
 }
 
+/** Any two person records side by side, for a decision already made (records may since be merged). */
+export async function compareRecords(a, b) {
+  const ok = (id) => /^[0-9a-f-]{36}$/.test(id || '') && store.allRelationships().some((r) => r.entityId === id || r.mergedFrom === id)
+    || store.merges().some((m) => m.retiredId === id || m.survivorId === id) || store.reviews().some((r) => r.newEntityId === id || r.candidates.some((c) => c.entityId === id));
+  if (!ok(a) || !ok(b)) throw new ClientError(404, 'NOT_FOUND', 'Those records are not on the platform’s network.');
+  const [submitted, existing] = await Promise.all([personProfile(a), personProfile(b)]);
+  return { kind: 'person', submitted, candidates: [existing] };
+}
+
 /** A held duplicate, with the full record on each side. */
 export async function reviewComparison(reviewId) {
   const review = store.review(reviewId);

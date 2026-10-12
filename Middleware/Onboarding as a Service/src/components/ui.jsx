@@ -19,6 +19,21 @@ export const ago = (iso) => {
   if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
   return fmtDate(iso);
 };
+/** A length of time, read aloud: "47 min", "3 h 12 min", "2 days 4 h". */
+export const duration = (ms) => {
+  const m = Math.max(0, Math.floor(ms / 60000));
+  if (m < 1) return 'under a minute';
+  if (m < 60) return `${m} min`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h} h${m % 60 ? ` ${m % 60} min` : ''}`;
+  const d = Math.floor(h / 24);
+  return `${d} day${d > 1 ? 's' : ''}${h % 24 ? ` ${h % 24} h` : ''}`;
+};
+
+/** How a wait compares with the target: fine, getting close (half way), or overdue. */
+export const waitTone = (ms, targetMin) => (ms >= targetMin * 60000 ? 'overdue' : ms >= targetMin * 30000 ? 'soon' : 'ok');
+export const WAIT_CLS = { ok: 'bg-slate-100 text-slate-700', soon: 'bg-amber-100 text-amber-800', overdue: 'bg-red-100 text-red-700' };
+
 const initials = (name) => String(name || '?').split(/\s+/).filter((w) => /^[A-Za-z]/.test(w)).map((w) => w[0]).slice(0, 2).join('').toUpperCase();
 
 // ── white-label theme ───────────────────────────────────────────────
@@ -96,8 +111,8 @@ export function Shell({ brand, nav, footer, children }) {
               {n.icon && <n.icon className="w-4 h-4 shrink-0" strokeWidth={1.75} />}
               {!collapsed && <span className="flex-1 truncate">{n.label}</span>}
               {n.badge ? (collapsed
-                ? <span className="absolute top-1 right-1.5 w-1.5 h-1.5 rounded-full bg-orange-500" />
-                : <span className="text-[11px] font-medium text-orange-700 bg-orange-100 rounded px-1.5">{n.badge}</span>) : null}
+                ? <span className={`absolute top-1 right-1.5 w-1.5 h-1.5 rounded-full ${n.badgeTone === 'red' ? 'bg-red-600' : 'bg-orange-500'}`} />
+                : <span className={`text-[11px] font-medium rounded px-1.5 ${n.badgeTone === 'red' ? 'text-white bg-red-600' : 'text-orange-700 bg-orange-100'}`}>{n.badge}</span>) : null}
             </NavLink>
           ))}
         </nav>

@@ -14,14 +14,16 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { FRANKIE, NAMED_IDS, PLATFORM, POLICY, SECRET, byId } from './config.mjs';
+import { FRANKIE, NAMED_IDS, PLATFORM, PLATFORM_STAFF, POLICY, SECRET, byId } from './config.mjs';
 import { ClientError, rerun, decide, forgetIndex, intermediaryForToken, list, network, offboard, onboard, provideDocument, refresh, reverseMerge, tokenFor } from './tier1.mjs';
 import { store } from './store.mjs';
 import { FONTS, brandFor, resetBrand, saveBrand } from './brand.mjs';
-import { reviewComparison, addClientComment, addPlatformComment, intermediaryAttachment, intermediaryFile, platformAttachment, platformFile, sendIdvLink } from './clientfile.mjs';
+import { compareRecords, reviewComparison, addClientComment, addPlatformComment, intermediaryAttachment, intermediaryFile, platformAttachment, platformFile, sendIdvLink } from './clientfile.mjs';
 import { DEMO_PEOPLE } from './demo-people.mjs';
 
-const OPERATOR_TOKEN = `opt_${crypto.createHmac('sha256', `${SECRET}:operator`).update('operator').digest('hex').slice(0, 32)}`;
+// One token per platform staff member, so every decision records who made it. In production: staff SSO.
+const staffToken = (id) => `opt_${crypto.createHmac('sha256', `${SECRET}:operator`).update(id).digest('hex').slice(0, 32)}`;
+const STAFF_BY_TOKEN = Object.fromEntries(PLATFORM_STAFF.map((s) => [staffToken(s.id), s]));
 const DIST = path.resolve(import.meta.dirname, '..', 'dist');
 
 function sendFile(res, { mimeType, filename, bytes }) {
@@ -76,12 +78,16 @@ async function route(req, res) {
 
   // ── the platform's own view ──
   if (p.startsWith('/internal/')) {
-    if (bearer(req) !== OPERATOR_TOKEN) return send(res, 401, { error: 'UNAUTHORISED' });
+    const staff = STAFF_BY_TOKEN[bearer(req)];
+    if (!staff) return send(res, 401, { error: 'UNAUTHORISED' });
+    if (p === '/internal/me') return send(res, 200, staff);
     if (p === '/internal/network') return send(res, 200, network());
+    if (p === '/internal/compare' && req.method === 'GET') return send(res, 200, await compareRecords(url.searchParams.get('a'), url.searchParams.get('b')));
     // Demo: switch the automatic-resolution policies without a restart.
     if (p === '/internal/policy' && req.method === 'PUT') {
       const b = await readBody(req);
       for (const k of ['autoMergeOnNameDobAddress', 'reuseEvidence']) if (typeof b[k] === 'boolean') POLICY[k] = b[k];
+      if (Number.isFinite(b.decisionTargetMinutes) && b.decisionTargetMinutes > 0) POLICY.decisionTargetMinutes = b.decisionTargetMinutes;
       return send(res, 200, POLICY);
     }
     if (p === '/internal/brands' && req.method === 'GET') {
@@ -94,9 +100,9 @@ async function route(req, res) {
     const rc = p.match(/^\/internal\/reviews\/(R-[A-Z0-9]+)\/comparison$/);
     if (rc && req.method === 'GET') return send(res, 200, await reviewComparison(rc[1]));
     const rv = p.match(/^\/internal\/reviews\/(R-[A-Z0-9]+)$/);
-    if (rv && req.method === 'POST') { const b = await readBody(req); return send(res, 200, await decide(rv[1], b.decision, b.entityId)); }
+    if (rv && req.method === 'POST') { const b = await readBody(req); return send(res, 200, await decide(rv[1], b.decision, b.entityId, staff, b.note)); }
     const mg = p.match(/^\/internal\/merges\/(M-[A-Z0-9]+)\/reverse$/);
-    if (mg && req.method === 'POST') return send(res, 200, await reverseMerge(mg[1]));
+    if (mg && req.method === 'POST') return send(res, 200, await reverseMerge(mg[1], staff, (await readBody(req)).note));
     const ef = p.match(/^\/internal\/entities\/([0-9a-f-]{36})\/file$/);
     if (ef) return send(res, 200, await platformFile(ef[1]));
     const ec = p.match(/^\/internal\/entities\/([0-9a-f-]{36})\/comments$/);
@@ -114,7 +120,7 @@ async function route(req, res) {
       envLabel: PLATFORM.envLabel,
       intermediariesConfigured: Object.keys(byId).length,
       intermediaries: NAMED_IDS.map((id) => ({ ...byId[id], token: tokenFor(id), brand: brandFor(id) })),
-      operatorToken: OPERATOR_TOKEN,
+      staff: PLATFORM_STAFF.map((s) => ({ ...s, token: staffToken(s.id) })),
       minResponseMs: POLICY.minResponseMs,
     });
   }

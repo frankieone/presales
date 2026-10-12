@@ -236,9 +236,9 @@ async function checkDuplicates(entityId, run) {
  * one, move this intermediary's reference across, and run its verification
  * on the surviving record. Results are never moved between records.
  */
-async function mergeInto(retiredId, pr, intermediary, rel, reason, decidedBy) {
+async function mergeInto(retiredId, pr, intermediary, rel, reason, decidedBy, staff) {
   const survivor = pr.supplementaryData.duplicateEntityId;
-  await frankie.resolveDuplicates(retiredId, [pr.processResultId], 'TRUE_POSITIVE_REJECT', reason);
+  await frankie.resolveDuplicates(retiredId, [pr.processResultId], 'TRUE_POSITIVE_REJECT', reason, staff?.name || 'Platform merge policy');
   if (rel.referenceId) await frankie.removeReference(retiredId, rel.referenceId).catch(() => {});
   const patched = await frankie.addReference(survivor, reference(intermediary, rel.clientRef));
   const verified = await verifyOrReuse(survivor, intermediary, null);
@@ -246,7 +246,8 @@ async function mergeInto(retiredId, pr, intermediary, rel, reason, decidedBy) {
   const merge = store.addMerge({
     id: `M-${Date.now().toString(36).toUpperCase()}`, at: new Date().toISOString(),
     intermediaryId: intermediary.id, handle: rel.handle, retiredId, survivorId: survivor,
-    processResultId: pr.processResultId, matchedOn: matchedOn(pr), reason, decidedBy, reversedAt: null,
+    processResultId: pr.processResultId, matchedOn: matchedOn(pr), reason, decidedBy, decidedKind: staff ? 'person' : 'policy',
+    staff: staff || null, reversedAt: null,
   });
   return {
     merge,
@@ -610,11 +611,13 @@ function rollUp(rel) {
 }
 
 /** A possible same business (no ABN or ACN, same name and postcode): same business, or different. */
-async function decideBusiness(review, decision) {
+const signOff = (staff, note) => `${note || 'No reason given.'} (${staff.name}, ${staff.role})`;
+
+async function decideBusiness(review, decision, staff, note) {
   const intermediary = byId[review.intermediaryId];
   const biz = relFor(review.intermediaryId, review.handle);
   const existing = review.candidates[0].entityId;
-  const log = tracer(intermediary, biz.clientRef, `Compliance decided: ${decision === 'merge' ? 'same business' : 'different businesses'}`);
+  const log = tracer(intermediary, biz.clientRef, `${staff.name} decided: ${decision === 'merge' ? 'same business' : 'different businesses'}`);
   if (decision === 'merge') {
     // No duplicate API for organisations: the platform moves the relationship itself.
     await frankie.addOrganizationReference(existing, reference(intermediary, biz.clientRef));
@@ -631,38 +634,43 @@ async function decideBusiness(review, decision) {
   }
   biz.reviewId = null;
   store.update(biz, businessOutcome(biz));
-  Object.assign(review, { decidedAt: new Date().toISOString(), decision });
+  Object.assign(review, { decidedAt: new Date().toISOString(), decision, decidedBy: staff, note: note || null });
   store.touch();
+  log.step(`Signed off by ${staff.name} (${staff.role}): ${note || 'no reason given'}.`);
   log.done(`${intermediary.name} sees ${STATUS_LABEL[biz.status]}`);
   return review;
 }
 
 /** A compliance officer decides a held possible duplicate: same person (merge) or different people. */
-export async function decide(reviewId, decision, candidateEntityId) {
+export async function decide(reviewId, decision, candidateEntityId, staff, note) {
   const review = store.review(reviewId);
   if (!review || review.decidedAt) throw new ClientError(404, 'NOT_FOUND', 'No open review with that id.');
-  if (review.kind === 'business') return decideBusiness(review, decision);
+  if (!staff) throw new ClientError(401, 'UNAUTHORISED', 'A signed-in staff member makes every decision.');
+  note = String(note || '').trim().slice(0, 1000);
+  if (review.kind === 'business') return decideBusiness(review, decision, staff, note);
   const intermediary = byId[review.intermediaryId];
   const rel = relFor(review.intermediaryId, review.handle);
   if (decision === 'merge') {
     const chosen = review.candidates.find((c) => c.entityId === candidateEntityId) || review.candidates[0];
     const others = review.candidates.filter((c) => c !== chosen).map((c) => c.processResultId);
-    if (others.length) await frankie.resolveDuplicates(review.newEntityId, others, 'FALSE_POSITIVE', 'Compliance: a different person.');
+    if (others.length) await frankie.resolveDuplicates(review.newEntityId, others, 'FALSE_POSITIVE', `Different person. ${signOff(staff, note)}`, staff.name);
     const { changes, merge } = await mergeInto(review.newEntityId, { processResultId: chosen.processResultId, supplementaryData: { duplicateEntityId: chosen.entityId, matchedFields: chosen.matchedOn.map((t) => ({ objectType: t })) } },
-      intermediary, rel, 'Compliance: confirmed the same person after comparing the records.', 'Compliance');
+      intermediary, rel, `Same person. ${signOff(staff, note)}`, staff.name, staff);
     recordReuse(rel, { ...changes, reviewId: null });
-    Object.assign(review, { decidedAt: new Date().toISOString(), decision: 'merge', mergeId: merge.id });
-    const log = tracer(intermediary, rel.clientRef, `Compliance decided: same person`);
+    Object.assign(review, { decidedAt: new Date().toISOString(), decision: 'merge', mergeId: merge.id, survivorId: chosen.entityId, decidedBy: staff, note: note || null });
+    const log = tracer(intermediary, rel.clientRef, `${staff.name} decided: same person`);
+    log.step(`Signed off by ${staff.name} (${staff.role}): ${note || 'no reason given'}.`);
     log.step(`FrankieOne: confirmed the duplicate (TRUE_POSITIVE_REJECT): kept record ${short(chosen.entityId)}, retired ${short(review.newEntityId)}.`, 'frankieone');
     log.step(`FrankieOne: moved ${poss(intermediary.name)} reference to ${short(chosen.entityId)}. ${changes.lastReuse ? `Existing checks reused (${changes.lastReuse.sourceWorkflow}), no new run` : `Ran ${intermediary.workflow}`} → ${changes.workflowStatus}.`, 'frankieone');
     log.done(`${intermediary.name} sees ${STATUS_LABEL[rel.status]}, with the same handle`);
   } else {
-    await frankie.resolveDuplicates(review.newEntityId, review.candidates.map((c) => c.processResultId), 'FALSE_POSITIVE', 'Compliance: different people.');
+    await frankie.resolveDuplicates(review.newEntityId, review.candidates.map((c) => c.processResultId), 'FALSE_POSITIVE', `Different people. ${signOff(staff, note)}`, staff.name);
     const wr = (await frankie.verifyExisting(review.newEntityId, intermediary.workflow, intermediary.id)).workflowResult || {};
     if (rel.matchKey) store.remember(rel.matchKey, review.newEntityId);
     store.update(rel, { reviewId: null, executionId: wr.workflowExecutionId, workflowStatus: wr.status, completedAt: new Date().toISOString(), ...outcome(wr) });
-    Object.assign(review, { decidedAt: new Date().toISOString(), decision: 'different' });
-    const log = tracer(intermediary, rel.clientRef, `Compliance decided: different people`);
+    Object.assign(review, { decidedAt: new Date().toISOString(), decision: 'different', decidedBy: staff, note: note || null });
+    const log = tracer(intermediary, rel.clientRef, `${staff.name} decided: different people`);
+    log.step(`Signed off by ${staff.name} (${staff.role}): ${note || 'no reason given'}.`);
     log.step(`FrankieOne: dismissed the match (FALSE_POSITIVE). Both records stay.`, 'frankieone');
     log.step(`FrankieOne: ran ${intermediary.workflow} on record ${short(review.newEntityId)} → ${wr.status}.`, 'frankieone');
     log.done(`${intermediary.name} sees ${STATUS_LABEL[rel.status]}`);
@@ -673,12 +681,14 @@ export async function decide(reviewId, decision, candidateEntityId) {
 }
 
 /** A merge proves wrong: restore the retired record and re-run that intermediary's verification on it. */
-export async function reverseMerge(mergeId) {
+export async function reverseMerge(mergeId, staff, note) {
   const merge = store.merge(mergeId);
   if (!merge || merge.reversedAt) throw new ClientError(404, 'NOT_FOUND', 'No active merge with that id.');
+  if (!staff) throw new ClientError(401, 'UNAUTHORISED', 'A signed-in staff member reverses a merge.');
+  note = String(note || '').trim().slice(0, 1000);
   const intermediary = byId[merge.intermediaryId];
   const rel = relFor(merge.intermediaryId, merge.handle);
-  await frankie.resolveDuplicates(merge.retiredId, [merge.processResultId], 'FALSE_POSITIVE', 'Merge reversed: different people.');
+  await frankie.resolveDuplicates(merge.retiredId, [merge.processResultId], 'FALSE_POSITIVE', `Merge reversed: different people. ${signOff(staff, note)}`, staff.name);
   if (rel.referenceId) await frankie.removeReference(merge.survivorId, rel.referenceId).catch(() => {});
   const patched = await frankie.addReference(merge.retiredId, reference(intermediary, rel.clientRef));
   const wr = (await frankie.verifyExisting(merge.retiredId, intermediary.workflow, intermediary.id)).workflowResult || {};
@@ -688,9 +698,10 @@ export async function reverseMerge(mergeId) {
     referenceId: (patched.individual?.externalReferences || []).find((r) => r.name === refName(intermediary.id))?.referenceId,
     executionId: wr.workflowExecutionId, workflowStatus: wr.status, completedAt: new Date().toISOString(), ...outcome(wr),
   });
-  merge.reversedAt = new Date().toISOString();
+  Object.assign(merge, { reversedAt: new Date().toISOString(), reversedBy: staff, reversalNote: note || null });
   store.touch();
-  const log = tracer(intermediary, rel.clientRef, `Compliance reversed a merge`);
+  const log = tracer(intermediary, rel.clientRef, `${staff.name} reversed a merge`);
+  log.step(`Signed off by ${staff.name} (${staff.role}): ${note || 'no reason given'}.`);
   log.step(`FrankieOne: reversed the duplicate decision, restoring record ${short(merge.retiredId)}.`, 'frankieone');
   log.step(`FrankieOne: moved ${poss(intermediary.name)} reference back and ran ${intermediary.workflow} on ${short(merge.retiredId)} → ${wr.status}.`, 'frankieone');
   log.done(`${intermediary.name} sees ${STATUS_LABEL[rel.status]}, with the same handle`);
@@ -785,6 +796,30 @@ export function list(intermediary) {
 }
 
 // ── the platform's own view (compliance and operations, never intermediaries) ──
+/**
+ * Every duplicate decision, newest first: those a person signed off, and
+ * merges the merge policy made on its own. Each says who, when, why, and
+ * whether it was later reversed.
+ */
+function decisionHistory() {
+  const rels = store.allRelationships();
+  const nameOf = (intermediaryId, handle) => rels.find((x) => x.intermediaryId === intermediaryId && x.handle === handle)?.name;
+  const mergeOf = (id) => store.merge(id);
+  const reversal = (m) => (m?.reversedAt ? { at: m.reversedAt, by: m.reversedBy || null, note: m.reversalNote || null } : null);
+  const byPerson = store.reviews().filter((r) => r.decidedAt).map((r) => ({
+    id: r.id, kind: r.kind, raisedAt: r.at, at: r.decidedAt, intermediary: byId[r.intermediaryId]?.name, name: nameOf(r.intermediaryId, r.handle),
+    outcome: r.decision === 'merge' ? 'Merged' : 'Kept separate', decidedBy: r.decidedBy || null, note: r.note || null,
+    matchedOn: r.candidates[0]?.matchedOn || [], newEntityId: r.newEntityId, existingEntityId: r.survivorId || r.candidates[0]?.entityId,
+    mergeId: r.mergeId || null, reversed: reversal(mergeOf(r.mergeId)),
+  }));
+  const byPolicy = store.merges().filter((m) => m.decidedKind === 'policy' || m.decidedBy === 'Merge policy').map((m) => ({
+    id: m.id, kind: 'person', raisedAt: m.at, at: m.at, intermediary: byId[m.intermediaryId]?.name, name: nameOf(m.intermediaryId, m.handle),
+    outcome: 'Merged automatically', decidedBy: null, note: m.reason, matchedOn: m.matchedOn || [],
+    newEntityId: m.retiredId, existingEntityId: m.survivorId, mergeId: m.id, reversed: reversal(m),
+  }));
+  return [...byPerson, ...byPolicy].sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
+}
+
 export function network() {
   const rels = store.allRelationships();
   const investors = {};
@@ -818,7 +853,8 @@ export function network() {
     disclosures: store.disclosures().slice(-40).reverse().map((d) => ({ ...d, intermediary: byId[d.intermediaryId]?.name })),
     policy: POLICY,
     permittedFields: PERMITTED_FIELDS,
-    reviews: store.reviews().filter((r) => !r.decidedAt).map((r) => {
+    // Oldest first: every one of these is a client whose onboarding is on hold.
+    reviews: store.reviews().filter((r) => !r.decidedAt).sort((a, b) => Date.parse(a.at) - Date.parse(b.at)).map((r) => {
       const rel = store.allRelationships().find((x) => x.intermediaryId === r.intermediaryId && x.handle === r.handle);
       return {
         ...r,
@@ -832,6 +868,7 @@ export function network() {
       };
     }),
     merges: store.merges().slice().reverse().map((m) => ({ ...m, intermediary: byId[m.intermediaryId]?.name })),
+    decisions: decisionHistory(),
     activity: store.activity().slice(-15).reverse(),
   };
 }

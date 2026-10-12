@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { Activity, Database, Eye, FlaskConical, GitMerge, LogOut, Palette, Scale, Settings2, ShieldCheck, Trash2 } from 'lucide-react';
-import { getSession, network, resetDemo, setSession } from '../../api';
+import { getSession, network, platformMe, resetDemo, setSession } from '../../api';
 import { Shell, SideButton } from '../../components/ui';
 
 /**
@@ -14,11 +14,13 @@ export default function PlatformLayout({ demo }) {
   const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
+  const [me, setMe] = useState(null);
   const load = useCallback(() => network().then((d) => { setData(d); setError(''); }).catch((e) => setError(e.message)), []);
 
   useEffect(() => {
     if (getSession()?.role !== 'platform') { navigate('/'); return undefined; }
     load();
+    platformMe().then(setMe).catch(() => { setSession(null); navigate('/'); });
     const t = setInterval(load, 5000);
     return () => clearInterval(t);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -43,6 +45,12 @@ export default function PlatformLayout({ demo }) {
   );
   const footer = (collapsed) => (
     <>
+      {me && !collapsed && (
+        <div className="px-2.5 pb-2 flex items-center gap-2">
+          <span className="w-6 h-6 rounded-full bg-slate-200 text-slate-700 text-[10px] font-semibold flex items-center justify-center">{me.name.split(' ').map((w) => w[0]).join('')}</span>
+          <span className="min-w-0"><span className="block text-[12px] text-slate-900 truncate">{me.name}</span><span className="block text-[11px] text-slate-500 truncate">{me.role}</span></span>
+        </div>
+      )}
       <SideButton collapsed={collapsed} icon={Trash2} onClick={reset}>Reset demo</SideButton>
       <SideButton collapsed={collapsed} icon={LogOut} onClick={() => { setSession(null); navigate('/'); }}>Sign out</SideButton>
     </>
@@ -50,7 +58,8 @@ export default function PlatformLayout({ demo }) {
   return (
     <Shell brand={brand} footer={footer} nav={[
       { to: '/platform', label: 'Records', icon: Database, end: true },
-      { to: '/platform/decisions', label: 'Decisions', icon: Scale, badge: data?.reviews.length || null },
+      { to: '/platform/decisions', label: 'Decisions', icon: Scale, badge: data?.reviews.length || null,
+        badgeTone: data?.reviews.some((r) => Date.now() - Date.parse(r.at) >= data.policy.decisionTargetMinutes * 60000) ? 'red' : null },
       { to: '/platform/activity', label: 'Activity', icon: Activity },
       { to: '/platform/merges', label: 'Merges', icon: GitMerge },
       { to: '/platform/disclosures', label: 'Disclosure log', icon: Eye },
@@ -59,7 +68,7 @@ export default function PlatformLayout({ demo }) {
       { to: '/platform/policies', label: 'Policies', icon: Settings2 },
     ]}>
       {error && <p className="px-5 pt-3 text-[13px] text-red-700">{error}</p>}
-      <Outlet context={{ data, reload: load, demo }} />
+      <Outlet context={{ data, reload: load, demo, me }} />
     </Shell>
   );
 }

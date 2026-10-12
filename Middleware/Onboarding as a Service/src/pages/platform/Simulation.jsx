@@ -51,7 +51,7 @@ export default function Simulation() {
         const kw = results.kw?.saw;
         const pending = (await network()).reviews.find((r) => r.intermediary === 'Kestrel Wealth');
         if (pending) {
-          await decideReview(pending.id, 'merge', pending.candidates[0].entityId);
+          await decideReview(pending.id, 'merge', pending.candidates[0].entityId, 'Simulation: same name, date of birth and address; Medicare card and licence both belong to James.');
           saw = await asIntermediary(tokenOf('kestrel'), 'GET', `/api/v1/clients/${kw.handle}`);
         } else {
           note = kw?.status === 'VERIFIED' ? 'Already resolved automatically when Kestrel submitted (the merge policy was met).' : 'Nothing waiting for a decision.';
