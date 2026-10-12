@@ -61,7 +61,12 @@ function checks(w) {
   const steps = w.steps || {};
   const list = [];
   for (const [bucket, label] of [['passed', 'Passed'], ['failed', 'Failed'], ['incomplete', 'Incomplete']]) {
-    for (const s of steps[bucket] || []) if (!HIDDEN_STEPS.has(s)) list.push({ check: CHECKS[s] || s.replace(/_/g, ' ').toLowerCase(), result: label });
+    for (const s of steps[bucket] || []) {
+      if (HIDDEN_STEPS.has(s)) continue;
+      // A photo ID step that didn't run (no photo taken) in a run that passed on electronic checks wasn't needed.
+      const notDone = s === 'IDV' && label === 'Failed' && w.status === 'PASS';
+      list.push({ check: notDone ? 'Photo ID check' : CHECKS[s] || s.replace(/_/g, ' ').toLowerCase(), result: notDone ? 'Not done' : label });
+    }
   }
   return list;
 }

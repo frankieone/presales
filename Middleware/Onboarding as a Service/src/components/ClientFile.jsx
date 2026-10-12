@@ -1,90 +1,102 @@
 import { useEffect, useState } from 'react';
-import { CheckCircle2, XCircle, CircleDashed, FileText, Image as ImageIcon, Loader2, Upload, Smartphone, Copy, ExternalLink } from 'lucide-react';
+import { CheckCircle2, XCircle, CircleDashed, FileText, Image as ImageIcon, Loader2, Upload, Smartphone, Copy, ExternalLink, ShieldCheck, FolderOpen, History as HistoryIcon, Check } from 'lucide-react';
 import { fileUrl } from '../api';
+import { Badge, Empty, btn, fmtDate, fmtDateTime, fmtTime } from './ui';
 
 /**
  * The client file: verifications, risk, documents and history, as FrankieOne
  * holds them. The same sections render the intermediary's scoped file and
- * the platform's full one; `full` adds the platform-only columns (which
+ * the platform's full one; `full` adds the platform-only detail (which
  * intermediary a run was for, workflow names, scores).
  */
-const fmt = (iso) => (iso ? new Date(iso).toLocaleString('en-AU', { dateStyle: 'medium', timeStyle: 'short' }) : '—');
-const RESULT_CLS = {
-  Passed: 'bg-green-50 text-green-700 border-green-200', Complete: 'bg-green-50 text-green-700 border-green-200',
-  Failed: 'bg-red-50 text-red-700 border-red-200', Blocked: 'bg-red-50 text-red-700 border-red-200',
-  'Needs review': 'bg-amber-50 text-amber-700 border-amber-200',
+const fmt = fmtDateTime;
+const RESULT_TONE = { Passed: 'green', Complete: 'green', Failed: 'red', Blocked: 'red', 'Needs review': 'amber', 'In progress': 'blue' };
+const RISK = {
+  Low: ['text-green-700', 'bg-green-50', 'border-green-200'],
+  Medium: ['text-amber-700', 'bg-amber-50', 'border-amber-200'],
+  High: ['text-red-700', 'bg-red-50', 'border-red-200'],
+  Unacceptable: ['text-red-700', 'bg-red-50', 'border-red-200'],
 };
-const RISK_CLS = { Low: 'text-green-700', Medium: 'text-amber-700', High: 'text-red-700', Unacceptable: 'text-red-700' };
 
 export function Result({ value }) {
   if (!value) return null;
-  return <span className={`text-[11px] px-1.5 py-0.5 rounded border ${RESULT_CLS[value] || 'bg-slate-50 text-slate-600 border-slate-200'}`}>{value}</span>;
+  return <Badge tone={RESULT_TONE[value] || 'slate'}>{value}</Badge>;
 }
 
-const Empty = ({ children }) => <p className="text-sm text-slate-400 py-4">{children}</p>;
+function RiskChip({ level, score }) {
+  if (!level) return null;
+  const [text] = RISK[level] || ['text-slate-600'];
+  return <span className={`text-[13px] font-medium ${text}`}>{level} risk{score != null ? <span className="text-slate-400 font-normal"> · {score}</span> : null}</span>;
+}
 
 export function Verifications({ items, full }) {
-  if (!items?.length) return <Empty>No verifications yet.</Empty>;
+  if (!items?.length) return <Empty icon={ShieldCheck} title="No verifications yet">Verifications appear here once a check has run.</Empty>;
   return (
-    <div className="space-y-3">
+    <ol className="space-y-4">
       {items.map((v) => (
-        <div key={v.ref} className="rounded-lg border border-slate-200 p-3">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-sm font-medium text-slate-900">{v.kind}{v.monitoring ? ' · ongoing monitoring' : ''}</p>
-              <p className="text-xs text-slate-500">{fmt(v.startedAt)}{full && v.workflow ? <> · <span className="font-mono">{v.workflow}</span></> : null}</p>
-              {full && v.for && <p className="text-xs text-slate-500">For {v.for}</p>}
+        <li key={v.ref} className="rounded-xl border border-slate-200 bg-white">
+          <div className="px-5 py-4 flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-[15px] font-semibold text-slate-900">{v.kind}</h3>
+                <Result value={v.result} />
+                {v.monitoring && <Badge tone="violet">Ongoing monitoring</Badge>}
+              </div>
+              <p className="mt-1 text-sm text-slate-500">
+                {fmt(v.startedAt)}
+                {full && v.for ? <> · for <span className="text-slate-700">{v.for}</span></> : null}
+              </p>
+              {full && v.workflow && <p className="mt-0.5 text-xs font-mono text-slate-400">{v.workflow}</p>}
             </div>
-            <div className="text-right shrink-0">
-              <Result value={v.result} />
-              {v.riskLevel && <p className={`mt-1 text-xs ${RISK_CLS[v.riskLevel] || 'text-slate-600'}`}>{v.riskLevel} risk{full && v.riskScore != null ? ` · ${v.riskScore}` : ''}</p>}
-            </div>
+            <RiskChip level={v.riskLevel} score={full ? v.riskScore : null} />
           </div>
           {v.checks.length > 0 && (
-            <ul className="mt-2 space-y-1">
+            <ul className="px-5 py-4 border-t border-slate-100 grid sm:grid-cols-2 gap-x-8 gap-y-2.5">
               {v.checks.map((c, i) => (
-                <li key={i} className="text-xs text-slate-600 flex items-start gap-1.5">
-                  {c.result === 'Passed' ? <CheckCircle2 className="w-3.5 h-3.5 text-green-600 mt-px shrink-0" />
-                    : c.result === 'Failed' ? <XCircle className="w-3.5 h-3.5 text-red-600 mt-px shrink-0" />
-                    : <CircleDashed className="w-3.5 h-3.5 text-slate-400 mt-px shrink-0" />}
-                  {c.check}
+                <li key={i} className="text-sm text-slate-700 flex items-start gap-2.5">
+                  {c.result === 'Passed' ? <CheckCircle2 className="w-[18px] h-[18px] text-green-600 shrink-0" strokeWidth={1.75} />
+                    : c.result === 'Failed' ? <XCircle className="w-[18px] h-[18px] text-red-500 shrink-0" strokeWidth={1.75} />
+                    : <CircleDashed className="w-[18px] h-[18px] text-slate-400 shrink-0" strokeWidth={1.75} />}
+                  <span>{c.check}</span>
                 </li>
               ))}
             </ul>
           )}
-          {v.issues?.length > 0 && <p className="mt-2 text-xs text-amber-700">{v.issues.join(' · ')}</p>}
-        </div>
+          {v.issues?.length > 0 && <p className="px-5 pb-4 text-sm text-amber-700">{v.issues.join(' · ')}</p>}
+        </li>
       ))}
-    </div>
+    </ol>
   );
 }
 
 export function Risk({ risk, full }) {
-  if (!risk) return <Empty>No risk assessment yet.</Empty>;
+  if (!risk) return <Empty icon={ShieldCheck} title="No risk assessment yet">A risk assessment is made when a verification runs.</Empty>;
+  const [text, bg, border] = RISK[risk.level] || ['text-slate-800', 'bg-slate-50', 'border-slate-200'];
   return (
-    <div>
-      <div className="flex items-baseline gap-3">
-        <p className={`text-2xl font-bold ${RISK_CLS[risk.level] || 'text-slate-800'}`}>{risk.level || '—'}</p>
-        <p className="text-xs text-slate-500">Assessed {fmt(risk.assessedAt)}{full && risk.score != null ? ` · score ${risk.score}` : ''}</p>
+    <div className="grid lg:grid-cols-[260px_1fr] gap-6 items-start">
+      <div className={`rounded-xl border ${border} ${bg} p-5`}>
+        <p className="text-[13px] text-slate-600">Overall risk</p>
+        <p className={`mt-1 text-3xl font-semibold tracking-tight ${text}`}>{risk.level || '—'}</p>
+        {full && risk.score != null && <p className="mt-1 text-sm text-slate-600">Score {risk.score}</p>}
+        <p className="mt-3 text-xs text-slate-500">Assessed {fmt(risk.assessedAt)}</p>
+        {full && risk.entityLevel && <p className="mt-1 text-xs text-slate-500">Record level: {risk.entityLevel}{risk.entityScore != null ? ` (${risk.entityScore})` : ''}</p>}
       </div>
-      {full && risk.entityLevel && <p className="text-xs text-slate-500">Record-level risk: {risk.entityLevel}{risk.entityScore != null ? ` (${risk.entityScore})` : ''}</p>}
-      {risk.factors.length > 0 ? (
-        <table className="mt-3 w-full text-sm">
-          <thead className="text-[11px] text-slate-400 uppercase tracking-wide">
-            <tr><th className="text-left py-1">Factor</th><th className="text-left py-1">Value</th>{full && <th className="text-right py-1">Score</th>}</tr>
-          </thead>
-          <tbody>
+      <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+        <div className="px-5 py-3 border-b border-slate-100 flex justify-between text-[12px] font-medium text-slate-500">
+          <span>Factor</span><span>{full ? 'Value · score' : 'Value'}</span>
+        </div>
+        {risk.factors.length ? (
+          <ul className="divide-y divide-slate-100">
             {risk.factors.map((f, i) => (
-              <tr key={i} className="border-t border-slate-100">
-                <td className="py-1.5 text-slate-700">{f.factor}</td>
-                <td className="py-1.5 text-slate-500 font-mono text-xs">{String(f.value).replace(/_/g, ' ')}</td>
-                {full && <td className="py-1.5 text-right text-slate-500">{f.score}</td>}
-              </tr>
+              <li key={i} className="px-5 py-3 flex items-center justify-between gap-4 text-sm">
+                <span className="text-slate-700">{f.factor}</span>
+                <span className="text-slate-500">{String(f.value).replace(/_/g, ' ').toLowerCase()}{full && f.score != null ? <span className="ml-3 inline-block w-6 text-right text-slate-900 font-medium">{f.score}</span> : null}</span>
+              </li>
             ))}
-          </tbody>
-        </table>
-      ) : <p className="mt-2 text-xs text-slate-400">No factors to show.</p>}
-      {!full && <p className="mt-3 text-[11px] text-slate-400">Shown as a level and the factors behind it. Scores stay with the platform.</p>}
+          </ul>
+        ) : <p className="px-5 py-6 text-sm text-slate-500">No factors to show.</p>}
+        {!full && <p className="px-5 py-3 border-t border-slate-100 text-xs text-slate-500">Shown as a level and the factors behind it. Scores stay with the platform.</p>}
+      </div>
     </div>
   );
 }
@@ -100,34 +112,40 @@ function Attachment({ path, att }) {
   }, [path, isImage]);
   const open = async () => { try { window.open(url || await fileUrl(path), '_blank', 'noopener'); } catch (e) { setError(e.message); } };
   return (
-    <button onClick={open} className="text-left rounded-md border border-slate-200 bg-white p-1.5 hover:border-slate-400 w-28">
-      {isImage ? (url ? <img src={url} alt={att.filename || 'attachment'} className="w-full h-20 object-cover rounded" />
-        : <span className="w-full h-20 flex items-center justify-center text-slate-300">{error ? <ImageIcon className="w-5 h-5" /> : <Loader2 className="w-4 h-4 animate-spin" />}</span>)
-        : <span className="w-full h-20 flex items-center justify-center text-slate-400"><FileText className="w-6 h-6" /></span>}
-      <span className="block mt-1 text-[10px] text-slate-500 truncate">{att.side ? `${att.side.toLowerCase()} · ` : ''}{att.filename || att.mimeType}</span>
-      {error && <span className="block text-[10px] text-red-600">{error}</span>}
+    <button onClick={open} title={att.filename || ''} className="group block w-full text-left">
+      <span className="block aspect-[4/3] rounded-lg overflow-hidden bg-slate-100 ring-1 ring-slate-200 group-hover:ring-slate-400 transition">
+        {isImage
+          ? url ? <img src={url} alt={att.filename || 'Attachment'} className="w-full h-full object-cover" />
+            : <span className="w-full h-full flex items-center justify-center text-slate-400">{error ? <ImageIcon className="w-6 h-6" /> : <Loader2 className="w-5 h-5 animate-spin" />}</span>
+          : <span className="w-full h-full flex items-center justify-center text-slate-400"><FileText className="w-8 h-8" strokeWidth={1.5} /></span>}
+      </span>
+      <span className="block mt-1.5 text-xs text-slate-500 truncate">{att.side ? `${att.side[0]}${att.side.slice(1).toLowerCase()} · ` : ''}{att.filename || att.mimeType}</span>
     </button>
   );
 }
 
 export function Documents({ items, attachmentPath, full }) {
-  if (!items?.length) return <Empty>No documents yet.</Empty>;
+  if (!items?.length) return <Empty icon={FolderOpen} title="No documents yet">Documents you add, and photos from an ID check, appear here.</Empty>;
   return (
-    <div className="space-y-3">
+    <div className="grid sm:grid-cols-2 gap-4">
       {items.map((d) => (
-        <div key={d.documentId} className="rounded-lg border border-slate-200 p-3">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-sm font-medium text-slate-900">{d.type}{d.number ? <span className="ml-1.5 font-mono text-xs text-slate-500">{full && d.fullNumber ? d.fullNumber : d.number}</span> : null}</p>
-              <p className="text-xs text-slate-500">{d.class ? `${d.class.toLowerCase()} · ` : ''}{d.country ? `${d.country} · ` : ''}added {fmt(d.addedAt)}{full && d.addedBy ? ` by ${d.addedBy}` : ''}</p>
+        <div key={d.documentId} className="rounded-xl border border-slate-200 bg-white p-5">
+          <div className="flex items-start gap-3">
+            <span className="w-9 h-9 rounded-lg bg-slate-100 text-slate-500 flex items-center justify-center shrink-0"><FileText className="w-[18px] h-[18px]" strokeWidth={1.75} /></span>
+            <div className="min-w-0">
+              <p className="text-[15px] font-medium text-slate-900">{d.type}</p>
+              <p className="text-sm text-slate-500">
+                {d.number ? <span className="font-mono">{full && d.fullNumber ? d.fullNumber : d.number}</span> : 'No number'}
+                {d.country ? ` · ${d.country}` : ''}
+              </p>
             </div>
-            <span className="text-[11px] text-slate-400 shrink-0">{d.attachments.length ? `${d.attachments.length} file${d.attachments.length > 1 ? 's' : ''}` : 'details only'}</span>
           </div>
-          {d.attachments.length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-2">
+          <p className="mt-3 text-xs text-slate-500">Added {fmtDate(d.addedAt)}{full && d.addedBy ? ` by ${d.addedBy}` : ''}{d.class ? ` · ${d.class.toLowerCase()}` : ''}</p>
+          {d.attachments.length > 0 ? (
+            <div className="mt-4 grid grid-cols-3 gap-3">
               {d.attachments.map((a) => <Attachment key={a.attachmentId} att={a} path={attachmentPath(d, a)} />)}
             </div>
-          )}
+          ) : <p className="mt-4 text-xs text-slate-400">Details only, no file attached.</p>}
         </div>
       ))}
     </div>
@@ -135,21 +153,39 @@ export function Documents({ items, attachmentPath, full }) {
 }
 
 export function History({ items, full }) {
-  if (!items?.length) return <Empty>Nothing recorded yet.</Empty>;
+  if (!items?.length) return <Empty icon={HistoryIcon} title="Nothing recorded yet" />;
+  const days = [];
+  for (const e of items) {
+    const day = fmtDate(e.at);
+    if (days.at(-1)?.day !== day) days.push({ day, events: [] });
+    days.at(-1).events.push(e);
+  }
   return (
-    <ol className="relative border-l border-slate-200 ml-1.5">
-      {items.map((e, i) => (
-        <li key={i} className="ml-4 pb-3">
-          <span className={`absolute -left-[5px] mt-1.5 w-2.5 h-2.5 rounded-full ${e.source === 'Platform' ? 'bg-slate-700' : 'bg-brand'}`} />
-          <p className="text-sm text-slate-800">{e.text} {e.result && e.result !== 'Not checked' ? <Result value={e.result} /> : null}</p>
-          <p className="text-[11px] text-slate-400">
-            {fmt(e.at)} · {e.source === 'Platform' ? 'Platform' : 'FrankieOne'}
-            {full && e.workflow ? <> · <span className="font-mono">{e.workflow}</span></> : null}
-            {full && e.for ? ` · for ${e.for}` : ''}
-          </p>
-        </li>
+    <div className="space-y-8">
+      {days.map(({ day, events }) => (
+        <div key={day}>
+          <p className="text-[13px] font-medium text-slate-500 mb-3">{day}</p>
+          <ol className="rounded-xl border border-slate-200 bg-white divide-y divide-slate-100">
+            {events.map((e, i) => (
+              <li key={i} className="px-5 py-3 flex items-start gap-4">
+                <span className="w-16 shrink-0 text-sm text-slate-400 tabular-nums">{fmtTime(e.at)}</span>
+                <span className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${e.source === 'Platform' ? 'bg-slate-400' : 'bg-brand'}`} />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm text-slate-800">{e.text}</p>
+                  {(full && (e.workflow || e.for)) && (
+                    <p className="mt-0.5 text-xs text-slate-500">{e.for ? `For ${e.for}` : ''}{e.for && e.workflow ? ' · ' : ''}{e.workflow ? <span className="font-mono">{e.workflow}</span> : null}</p>
+                  )}
+                </div>
+                <span className="shrink-0 flex items-center gap-2">
+                  {e.result && e.result !== 'Not checked' && <Result value={e.result} />}
+                  <span className="text-xs text-slate-400 w-20 text-right">{e.source === 'Platform' ? 'Platform' : 'FrankieOne'}</span>
+                </span>
+              </li>
+            ))}
+          </ol>
+        </div>
       ))}
-    </ol>
+    </div>
   );
 }
 
@@ -181,25 +217,35 @@ export function UploadDocument({ defaultType = 'OTHER', onUpload }) {
     } catch (e) { setError(e.message); } finally { setBusy(false); }
   };
   return (
-    <div className="rounded-lg border border-dashed border-slate-300 p-3">
-      <p className="text-xs font-medium text-slate-600">Add a document</p>
-      <div className="mt-2 flex flex-wrap items-center gap-2">
-        <select value={type} onChange={(e) => setType(e.target.value)} className="text-sm border border-slate-300 rounded-md px-2 py-1.5">
+    <div className="h-full rounded-xl border border-slate-200 bg-white p-5 flex flex-col">
+      <div className="flex items-start gap-3">
+        <span className="w-9 h-9 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center shrink-0"><Upload className="w-[18px] h-[18px]" strokeWidth={1.75} /></span>
+        <div>
+          <p className="text-[15px] font-medium text-slate-900">Add a document</p>
+          <p className="text-sm text-slate-500">Stored on the client's record, alongside their verification.</p>
+        </div>
+      </div>
+      <div className="mt-auto pt-4 space-y-3">
+        <select value={type} onChange={(e) => setType(e.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm">
           {DOC_TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
         </select>
-        <input type="file" accept="image/*,application/pdf" onChange={(e) => setFile(e.target.files?.[0] || null)} className="text-xs text-slate-600 max-w-[14rem]" />
-        <button onClick={submit} disabled={busy} className="px-3 py-1.5 rounded-md bg-slate-800 text-white text-xs inline-flex items-center gap-1.5 disabled:opacity-50">
-          {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />} Add to file
+        <label className="flex items-center gap-3 rounded-lg border border-dashed border-slate-300 px-3 py-2.5 text-sm text-slate-500 cursor-pointer hover:border-slate-400">
+          <FileText className="w-4 h-4 shrink-0" />
+          <span className="truncate flex-1">{file ? file.name : 'Choose a photo or PDF (optional)'}</span>
+          <input type="file" accept="image/*,application/pdf" onChange={(e) => setFile(e.target.files?.[0] || null)} className="sr-only" />
+        </label>
+        <button onClick={submit} disabled={busy} className={`${btn.primary} w-full`}>
+          {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />} Add to file
         </button>
       </div>
-      <p className="mt-1.5 text-[11px] text-slate-400">Attached to the client's record in FrankieOne, so it sits with their verification for audit.</p>
-      {error && <p className="mt-1 text-xs text-red-700">{error}</p>}
+      {error && <p className="mt-2 text-sm text-red-700">{error}</p>}
     </div>
   );
 }
 
 export function IdvLink({ who, onCreate }) {
   const [link, setLink] = useState(null);
+  const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const create = async () => {
@@ -207,22 +253,29 @@ export function IdvLink({ who, onCreate }) {
     try { setLink(await onCreate()); } catch (e) { setError(e.message); } finally { setBusy(false); }
   };
   return (
-    <div className="rounded-lg border border-dashed border-slate-300 p-3">
-      <p className="text-xs font-medium text-slate-600">ID verification with photo and selfie</p>
-      <p className="text-[11px] text-slate-400">A one-time link for {who} to photograph their ID and take a selfie on their phone. The photos and results land in this file.</p>
+    <div className="h-full rounded-xl border border-slate-200 bg-white p-5 flex flex-col">
+      <div className="flex items-start gap-3">
+        <span className="w-9 h-9 rounded-lg bg-blue-50 text-brand flex items-center justify-center shrink-0"><Smartphone className="w-[18px] h-[18px]" strokeWidth={1.75} /></span>
+        <div>
+          <p className="text-[15px] font-medium text-slate-900">ID check by phone</p>
+          <p className="text-sm text-slate-500">A one-time link for {who} to photograph their ID and take a selfie. Photos and results land in this file.</p>
+        </div>
+      </div>
       {!link ? (
-        <button onClick={create} disabled={busy} className="mt-2 px-3 py-1.5 rounded-md border border-slate-300 text-xs inline-flex items-center gap-1.5">
-          {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Smartphone className="w-3.5 h-3.5" />} Create link
+        <button onClick={create} disabled={busy} className={`${btn.secondary} w-full mt-auto`}>
+          {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Smartphone className="w-4 h-4" />} Create link
         </button>
       ) : (
-        <div className="mt-2 flex items-center gap-2">
-          <input readOnly value={link.url} className="flex-1 text-xs font-mono border border-slate-200 rounded px-2 py-1 bg-slate-50" />
-          <button onClick={() => navigator.clipboard?.writeText(link.url)} title="Copy" className="p-1.5 border border-slate-300 rounded"><Copy className="w-3.5 h-3.5" /></button>
-          <a href={link.url} target="_blank" rel="noreferrer" title="Open" className="p-1.5 border border-slate-300 rounded"><ExternalLink className="w-3.5 h-3.5" /></a>
+        <div className="mt-auto pt-4">
+          <div className="flex items-center gap-2">
+            <input readOnly value={link.url} className="flex-1 min-w-0 text-xs font-mono rounded-lg border border-slate-200 bg-slate-50 px-3 py-2" />
+            <button onClick={() => { navigator.clipboard?.writeText(link.url); setCopied(true); }} title="Copy link" className={btn.secondary}>{copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}</button>
+            <a href={link.url} target="_blank" rel="noreferrer" title="Open link" className={btn.secondary}><ExternalLink className="w-4 h-4" /></a>
+          </div>
+          {link.expiresAt && <p className="mt-2 text-xs text-slate-500">Expires {fmt(link.expiresAt)}. Check status once they've finished.</p>}
         </div>
       )}
-      {link?.expiresAt && <p className="mt-1 text-[11px] text-slate-400">Expires {fmt(link.expiresAt)}. Check status afterwards to see the result.</p>}
-      {error && <p className="mt-1 text-xs text-red-700">{error}</p>}
+      {error && <p className="mt-2 text-sm text-red-700">{error}</p>}
     </div>
   );
 }
