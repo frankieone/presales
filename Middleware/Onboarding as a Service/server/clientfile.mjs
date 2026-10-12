@@ -237,11 +237,23 @@ async function scopedFile(rel, entityType) {
     || (submitted && d.type === submitted.type && last4(d.primaryIdentifier) === submitted.last4)
     || (capturedByMyIdv(d) && !store.allRelationships().some((r) => r !== rel && (r.documentIds || []).includes(d.documentId))));
 
+  // Verifications satisfied by reusing a passed run: shown as this intermediary's own workflow, at
+  // the time of reuse. The run they relied on, and who it was first run for, stay with the platform.
+  const sources = [];
+  const reused = (rel.reuses || []).map((u) => {
+    const src = runs.find((w) => w.workflowExecutionId === u.sourceExecutionId);
+    if (!src) return null;
+    sources.push(src);
+    return { ...verification(src, false), ref: `reuse-${u.at}`, workflow: u.workflow, startedAt: u.at, endedAt: u.at, photoId: false };
+  }).filter(Boolean);
+  const byTime = (a, b) => Date.parse(b.startedAt || 0) - Date.parse(a.startedAt || 0);
+  const riskRuns = [...mineRuns, ...sources].sort(byTime);
+
   return {
-    verifications: mineRuns.filter((w) => w.lifecyclePhase !== 'MONITORING').map((w) => verification(w, false)),
+    verifications: [...reused, ...mineRuns.filter((w) => w.lifecyclePhase !== 'MONITORING').map((w) => verification(w, false))].sort(byTime),
     // Risk factors are held on the record, not per run. Any that describe a document this
     // intermediary didn't supply are left out, as they'd show another intermediary's submission.
-    risk: mineRuns.length ? riskFrom(mineRuns, latestRisk, (f) => f.factor !== 'document_type' || f.value === submitted?.type, false) : null,
+    risk: riskRuns.length ? riskFrom(riskRuns, latestRisk, (f) => f.factor !== 'document_type' || f.value === submitted?.type, false) : null,
     documents: mineDocs.map((d) => documentView(d, false)),
     activity: [
       ...activityFrom({
@@ -250,6 +262,7 @@ async function scopedFile(rel, entityType) {
       }),
       ...(rel.comments || []).filter((c) => c.text && !audit.some((e) => e.userComment?.commentId === c.commentId))
         .map((c) => ({ type: 'comment', at: c.at, commentId: c.commentId, text: c.text, author: c.author, action: null })),
+      ...reused.map((v) => ({ type: 'workflow', at: v.startedAt, workflow: v.workflow, result: v.result, ref: v.ref, riskLevel: v.riskLevel, riskScore: v.riskScore })),
       ...(rel.uploads || []).map((u) => ({ type: 'document', at: u.at, text: u.label })),
       { type: 'event', at: rel.createdAt, text: rel.kind === 'business' ? 'Business submitted for verification' : 'Submitted for verification' },
       ...(rel.idvRequests || []).map((q) => ({ type: 'event', at: q.at, text: 'ID check link sent' })),
@@ -352,6 +365,10 @@ export async function platformFile(entityId) {
     documents: docs.map((d) => ({ ...documentView(d, true), addedBy: uploader(d) ? byId[uploader(d).intermediaryId]?.name : null })),
     activity: [
       ...activityFrom({ runs, audit, scores: true, labelFor: (id) => holderLabel(ownerByRun[id]) }),
+      ...rels.flatMap((r) => (r.reuses || []).map((u) => ({
+        type: 'reuse', at: u.at, workflow: u.workflow, sourceWorkflow: u.sourceWorkflow, sourceRef: u.sourceExecutionId,
+        for: holderLabel([r]), source: holderLabel(ownerByRun[u.sourceExecutionId]),
+      }))),
       ...audit.filter((e) => e.functionName === 'CreateDocuments').map((e) => {
         const by = rels.find((r) => (r.documentIds || []).includes(e.supplementaryData?.documentId));
         return { type: 'document', at: e.timestamp, text: (DOC_TYPE[e.supplementaryData?.documentType] || 'Document') + ' added', for: by ? byId[by.intermediaryId]?.name : null };

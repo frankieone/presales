@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useOutletContext, useParams } from 'react-router-dom';
-import { Download, Loader2, MoreHorizontal, RefreshCw, Smartphone, Upload, UserMinus, X } from 'lucide-react';
-import { addComment, getClient, getClientFile, idvLink, removeClient, uploadDocument } from '../../api';
+import { Download, ListChecks, Loader2, MoreHorizontal, RefreshCw, Smartphone, Upload, UserMinus, X } from 'lucide-react';
+import { addComment, getClient, getClientFile, idvLink, removeClient, rerunChecks, uploadDocument } from '../../api';
 import { Attributes, Avatar, CopyValue, Loading, Menu, Panel, RecordLayout, StatusPill, Tabs, TopBar, btn, fmtDateTime, menuItem } from '../../components/ui';
 import { Activity, Documents, History, IdvLink, RecordSummary, Risk, UploadDocument, Verifications, printFile, seen } from '../../components/ClientFile';
 import { subtitle } from './Clients';
@@ -41,6 +41,10 @@ export default function ClientPage() {
   const refresh = async () => {
     setBusy('refresh'); setError('');
     try { await changed(await getClient(handle)); } catch (e) { setError(e.message); } finally { setBusy(''); }
+  };
+  const rerun = async () => {
+    setBusy('rerun'); setError('');
+    try { await changed(await rerunChecks(handle)); setTab('verifications'); setFocus(null); } catch (e) { setError(e.message); } finally { setBusy(''); }
   };
   const remove = async () => {
     if (!window.confirm(`Remove ${client.name} from ${im.brand.displayName}'s clients? Only your relationship ends.`)) return;
@@ -178,9 +182,11 @@ export default function ClientPage() {
   return (
     <>
       <TopBar crumbs={[{ label: 'Clients', to: '/console' }, { label: client.name }]} actions={<>
+        {busy === 'rerun' && <span className="text-[13px] text-slate-500 inline-flex items-center gap-1.5"><Loader2 className="w-4 h-4 animate-spin" /> Running checks…</span>}
         {busy === 'refresh' && <span className="text-[13px] text-slate-500 inline-flex items-center gap-1.5"><Loader2 className="w-4 h-4 animate-spin" /> Checking status…</span>}
         <Menu className={btn.ghost} label={<MoreHorizontal className="w-4 h-4" />}>
           <button data-close disabled={!!busy} onClick={refresh} className={menuItem}><RefreshCw className="w-4 h-4" /> Check status</button>
+          {!business && <button data-close disabled={!!busy} onClick={rerun} className={menuItem}><ListChecks className="w-4 h-4" /> Re-run checks</button>}
           <button data-close disabled={!file} onClick={() => printFile(file, { title: `Client file: ${client.name}`, subtitle: `Reference ${client.clientRef}`, brand: im.brand })} className={menuItem}><Download className="w-4 h-4" /> Download client file (PDF)</button>
           <button data-close onClick={remove} className={`${menuItem} text-red-700`}><UserMinus className="w-4 h-4" /> Client has left</button>
         </Menu>

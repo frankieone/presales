@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Check, CheckCircle2, ChevronRight, CircleDashed, Copy, ExternalLink, FileText, FolderOpen, Gauge, History as HistoryIcon, Image as ImageIcon, ListChecks, Loader2, MessageSquare, ShieldCheck, Upload, XCircle } from 'lucide-react';
+import { Check, CheckCircle2, ChevronRight, CircleDashed, Copy, ExternalLink, FileText, FolderOpen, Gauge, History as HistoryIcon, Image as ImageIcon, ListChecks, Loader2, MessageSquare, Repeat, ShieldCheck, Upload, XCircle } from 'lucide-react';
 import { fileUrl } from '../api';
 import { Badge, Empty, Panel, btn, fmtDate, fmtDateTime, fmtTime, input } from './ui';
 
@@ -147,6 +147,7 @@ function CommentBox({ onComment }) {
 const ICON = {
   workflow: [ListChecks, 'bg-blue-50 text-blue-600'], risk: [Gauge, 'bg-amber-50 text-amber-600'],
   comment: [MessageSquare, 'bg-violet-50 text-violet-600'], document: [FileText, 'bg-slate-100 text-slate-500'],
+  reuse: [Repeat, 'bg-green-50 text-green-600'],
 };
 
 /**
@@ -180,6 +181,12 @@ export function Activity({ items, full, onComment, onOpenRun }) {
                       <button onClick={() => onOpenRun?.(e.ref)} className="text-left">
                         <p className="text-[13px] text-slate-900">{who}<span className="font-medium hover:underline">{e.workflow}</span> <span className="ml-1"><Result value={e.result} /></span></p>
                         <p className="text-[12px] text-slate-500">Workflow run{e.riskLevel ? ` · ${e.riskLevel} risk${e.riskScore != null ? ` (${e.riskScore})` : ''}` : ''}{full && e.for ? ` · for ${e.for}` : ''}</p>
+                      </button>
+                    )}
+                    {e.type === 'reuse' && (
+                      <button onClick={() => onOpenRun?.(e.sourceRef)} className="text-left">
+                        <p className="text-[13px] text-slate-900"><span className="font-medium">{e.for}</span> verified using existing checks</p>
+                        <p className="text-[12px] text-slate-500">{e.workflow} satisfied by the {e.sourceWorkflow} run for {e.source}. No new checks run.</p>
                       </button>
                     )}
                     {e.type === 'risk' && (

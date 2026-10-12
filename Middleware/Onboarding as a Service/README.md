@@ -42,6 +42,14 @@ Every onboarding response takes at least the minimum response time (10 seconds b
 
 **Different people** on a held review keeps both records and verifies the new one on its own.
 
+### Evidence reuse: one set of checks across intermediaries
+
+When a person the platform already holds is onboarded by another intermediary, merged in after a duplicate decision, or re-checked (**…** → **Re-run checks**), the platform first looks for a passed run on the record that it can rely on: finished within the reuse window (`REUSE_WINDOW_DAYS`, 90 by default) and with every check the intermediary's workflow needs among its passed checks (`REQUIRED_CHECKS` in `server/config.mjs`; blocklist, KYC and AML for both demo workflows). If there is one, no new checks run. A comment on the FrankieOne record names the run relied on, so the audit trail is complete.
+
+The intermediary sees its own workflow and a normal result. It never learns that the checks were first run for someone else. The platform's record page shows each reuse and the run behind it. Set `REUSE_EVIDENCE=false` to always run fresh checks.
+
+**Platform operations** → **Simulation** runs the whole story in five steps: Northgate onboards James; Bluewave onboards him with the same licence (recognised, checks reused); Kestrel onboards him with his Medicare card (index misses, the duplicate-check workflow flags him); the platform resolves the duplicate (merge, checks reused); Northgate re-runs checks (reused). Tick **Resolve duplicates automatically** to have the platform merge at step 3 on an exact name, date of birth and address match (`AUTO_MERGE_NAME_DOB_ADDRESS`). Result on Sales Demo V2: one record, three intermediaries, one FrankieOne workflow run.
+
 ### Business clients, with or without an ABN or ACN
 
 Clients can be businesses: companies, trusts, partnerships or other organisations, each with the people behind them (directors, trustees, partners, beneficial owners, signatories). Many trusts and partnerships have no ABN or ACN, so the platform doesn't require one.
@@ -138,7 +146,7 @@ Policies (minimum response time, rate limit, reuse window, concurrency, automati
 
 - **Storage** is one JSON file in `data/` (ignored by git). In production these are tables, and the platform's secrets come from a secrets manager.
 - **Webhooks**: the server polls FrankieOne when an intermediary checks status, because a laptop can't receive webhooks. In production FrankieOne's webhooks go to the platform, routed by verification, never by client.
-- **Reuse window**: whether checks already held satisfy a new onboarding is set in FrankieOne's workflow configuration. The example runs each intermediary's workflow; it doesn't decide reuse itself.
+- **Reuse rules** are a list of required checks per workflow and a window. In production they'd come from each workflow's definition and the platform's compliance policy (for example, a shorter window for screening than for identity).
 - **The duplicate check** runs as its own workflow (`DUPLICATE_WORKFLOW`) when the platform creates a record, before the intermediary's own workflow. On a dedicated account it can equally be a step inside each intermediary's workflow.
 - **Shared demo account**: the demo account holds many copies of the same UAT test people from other demos, and FrankieOne's duplicate check matches them all. With `SHARED_DEMO_ACCOUNT=true` (the default), matches against records that aren't the platform's are set aside. On a dedicated account, set it to `false`: every record is the platform's, so every match is a candidate.
 - **FrankieOne's PDF audit report** for an individual is generated in the FrankieOne Portal. The **Client file (PDF)** here is the platform's own report, built from the same data, so it can be scoped per intermediary.

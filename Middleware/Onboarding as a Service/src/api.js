@@ -48,6 +48,8 @@ export const decideReview = (id, decision, entityId) => call('POST', `/internal/
 export const reverseMerge = (id) => call('POST', `/internal/merges/${id}/reverse`);
 export const getEntityFile = (entityId) => call('GET', `/internal/entities/${entityId}/file`);
 export const addEntityComment = (entityId, text) => call('POST', `/internal/entities/${entityId}/comments`, { text });
+export const setPolicy = (changes) => call('PUT', '/internal/policy', changes);
+export const rerunChecks = (handle) => call('POST', `/api/v1/clients/${handle}/rerun`);
 export const getBrands = () => call('GET', '/internal/brands');
 export const saveBrand = (id, brand) => call('PUT', `/internal/brands/${id}`, brand);
 export const resetBrand = (id) => call('DELETE', `/internal/brands/${id}`);

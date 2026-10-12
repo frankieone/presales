@@ -15,7 +15,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { FRANKIE, NAMED_IDS, PLATFORM, POLICY, SECRET, byId } from './config.mjs';
-import { ClientError, decide, forgetIndex, intermediaryForToken, list, network, offboard, onboard, provideDocument, refresh, reverseMerge, tokenFor } from './tier1.mjs';
+import { ClientError, rerun, decide, forgetIndex, intermediaryForToken, list, network, offboard, onboard, provideDocument, refresh, reverseMerge, tokenFor } from './tier1.mjs';
 import { store } from './store.mjs';
 import { FONTS, brandFor, resetBrand, saveBrand } from './brand.mjs';
 import { addClientComment, addPlatformComment, intermediaryAttachment, intermediaryFile, platformAttachment, platformFile, sendIdvLink } from './clientfile.mjs';
@@ -65,6 +65,8 @@ async function route(req, res) {
     if (f && req.method === 'GET') return send(res, 200, await intermediaryFile(im, f[1]));
     const a = p.match(/^\/api\/v1\/clients\/(C-[A-Z0-9]+)\/documents\/([0-9a-f-]{36})\/attachments\/([0-9a-f-]{36})$/);
     if (a && req.method === 'GET') return sendFile(res, await intermediaryAttachment(im, a[1], a[2], a[3], url.searchParams.get('person')));
+    const rr = p.match(/^\/api\/v1\/clients\/(C-[A-Z0-9]+)\/rerun$/);
+    if (rr && req.method === 'POST') return send(res, 200, await rerun(im, rr[1]));
     const cm = p.match(/^\/api\/v1\/clients\/(C-[A-Z0-9]+)\/comments$/);
     if (cm && req.method === 'POST') return send(res, 201, await addClientComment(im, cm[1], await readBody(req)));
     const v = p.match(/^\/api\/v1\/clients\/(C-[A-Z0-9]+)\/idv-link$/);
@@ -76,6 +78,12 @@ async function route(req, res) {
   if (p.startsWith('/internal/')) {
     if (bearer(req) !== OPERATOR_TOKEN) return send(res, 401, { error: 'UNAUTHORISED' });
     if (p === '/internal/network') return send(res, 200, network());
+    // Demo: switch the automatic-resolution policies without a restart.
+    if (p === '/internal/policy' && req.method === 'PUT') {
+      const b = await readBody(req);
+      for (const k of ['autoMergeOnNameDobAddress', 'reuseEvidence']) if (typeof b[k] === 'boolean') POLICY[k] = b[k];
+      return send(res, 200, POLICY);
+    }
     if (p === '/internal/brands' && req.method === 'GET') {
       return send(res, 200, { fonts: FONTS, brands: NAMED_IDS.map((id) => ({ id, name: byId[id].name, kind: byId[id].kind, brand: brandFor(id) })) });
     }

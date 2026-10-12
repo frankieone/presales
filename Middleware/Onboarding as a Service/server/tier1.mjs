@@ -11,7 +11,7 @@
  *   log         record what was disclosed to whom
  */
 import crypto from 'node:crypto';
-import { BUSINESS_WORKFLOW, DUPLICATE_WORKFLOW, INTERMEDIARIES, PERMITTED_FIELDS, PERMITTED_PERSON_FIELDS, POLICY, ROLES, SECRET, byId, refName } from './config.mjs';
+import { BUSINESS_WORKFLOW, DUPLICATE_WORKFLOW, INTERMEDIARIES, PERMITTED_FIELDS, PERMITTED_PERSON_FIELDS, POLICY, ROLES, SECRET, byId, refName, requiredChecks } from './config.mjs';
 import * as frankie from './frankie.mjs';
 import { store } from './store.mjs';
 import { addClientDocument } from './clientfile.mjs';
@@ -144,8 +144,71 @@ function meetsMergePolicy(candidates) {
   if (!POLICY.autoMergeOnDocumentAndDob || candidates.length !== 1) return false;
   const f = candidates[0].supplementaryData?.matchedFields || [];
   const exact = (t) => f.some((x) => x.objectType === t && x.matchStrength >= 100);
-  return exact('DOCUMENT') && exact('DATE_OF_BIRTH');
+  if (exact('DOCUMENT') && exact('DATE_OF_BIRTH')) return true;
+  return POLICY.autoMergeOnNameDobAddress && exact('NAME') && exact('DATE_OF_BIRTH') && exact('ADDRESS');
 }
+const policyReason = (pr) => {
+  const types = (pr.supplementaryData?.matchedFields || []).map((f) => f.objectType);
+  return types.includes('DOCUMENT') ? 'identity document and exact date of birth' : 'exact name, date of birth and address';
+};
+
+// ── evidence reuse ──────────────────────────────────────────────────
+const DAY = 24 * 3600 * 1000;
+
+/**
+ * The newest run on a record that can stand in for this intermediary's
+ * workflow: passed, finished within the reuse window, and with every check
+ * the workflow needs among its passed checks. Never the duplicate check.
+ */
+async function reusableRun(entityId, workflow) {
+  if (!POLICY.reuseEvidence) return null;
+  const sp = await frankie.getServiceProfile(entityId).catch(() => ({}));
+  const names = new Set([...(sp.serviceProfile?.workflowSummaries || []).map((w) => w.workflowName), workflow].filter((n) => n && n !== DUPLICATE_WORKFLOW));
+  const runs = (await Promise.all([...names].map((n) => frankie.listExecutions(entityId, n).then((r) => r.workflowResults || []).catch(() => [])))).flat();
+  const need = requiredChecks(workflow);
+  return runs
+    .filter((w) => w.status === 'PASS' && w.lifecyclePhase !== 'MONITORING')
+    .filter((w) => Date.now() - Date.parse(w.endedAt || w.startedAt) <= POLICY.reuseWindowDays * DAY)
+    .filter((w) => need.every((c) => (w.steps?.passed || []).includes(c)))
+    .sort((a, b) => Date.parse(b.endedAt || b.startedAt) - Date.parse(a.endedAt || a.startedAt))[0] || null;
+}
+
+/**
+ * Verify a person for an intermediary on a record the platform already
+ * holds: reuse a passed run that covers the intermediary's workflow, or run
+ * the workflow. Returns { workflowResult, reused }. When a run is reused,
+ * a comment on the FrankieOne record says which, so the audit trail shows
+ * what the verification relied on. The intermediary sees the same outcome
+ * either way, and never which intermediary the checks were first run for.
+ */
+async function verifyOrReuse(entityId, intermediary, log, who = 'the client') {
+  const prior = await reusableRun(entityId, intermediary.workflow);
+  if (prior) {
+    const passed = prior.endedAt || prior.startedAt;
+    const days = Math.max(0, Math.floor((Date.now() - Date.parse(passed)) / DAY));
+    await frankie.addComment(entityId, 'INDIVIDUAL',
+      `Evidence reused: ${poss(intermediary.name)} verification (${intermediary.workflow}) relies on run ${prior.workflowExecutionId} (${prior.workflowName}, passed ${passed.slice(0, 10)}), which covers ${requiredChecks(intermediary.workflow).join(', ')}. No new checks were run.`,
+      'platform', 'Platform').catch(() => {});
+    log?.step(`Evidence reuse: ${who} passed ${prior.workflowName} ${days === 0 ? 'today' : `${days} days ago`}, inside the ${POLICY.reuseWindowDays}-day window and covering every check ${intermediary.workflow} needs. No new checks; noted on the record for audit.`);
+    const risk = [...(prior.workflowStepResults || [])].reverse().find((s) => s.risk)?.risk;
+    return { reused: prior, workflowResult: { ...prior, riskAssessment: risk ? { riskLevel: risk.level } : undefined } };
+  }
+  const run = await frankie.verifyExisting(entityId, intermediary.workflow, intermediary.id);
+  return { reused: null, workflowResult: run.workflowResult || {} };
+}
+
+/** What to record on a relationship after verifyOrReuse. */
+function verifiedChanges(v, intermediary) {
+  const wr = v.workflowResult;
+  const at = new Date().toISOString();
+  return v.reused
+    ? { workflowStatus: wr.status, completedAt: at, ...outcome(wr), reuses: undefined, lastReuse: { at, sourceExecutionId: wr.workflowExecutionId, sourceWorkflow: wr.workflowName, workflow: intermediary.workflow } }
+    : { executionId: wr.workflowExecutionId, workflowStatus: wr.status, completedAt: at, ...outcome(wr) };
+}
+const recordReuse = (rel, changes) => {
+  const { lastReuse, reuses, ...rest } = changes;
+  store.update(rel, lastReuse ? { ...rest, reuses: [...(rel.reuses || []), lastReuse] } : rest);
+};
 
 /**
  * Read the duplicate check on a newly created record. Returns { clear } when
@@ -178,7 +241,7 @@ async function mergeInto(retiredId, pr, intermediary, rel, reason, decidedBy) {
   await frankie.resolveDuplicates(retiredId, [pr.processResultId], 'TRUE_POSITIVE_REJECT', reason);
   if (rel.referenceId) await frankie.removeReference(retiredId, rel.referenceId).catch(() => {});
   const patched = await frankie.addReference(survivor, reference(intermediary, rel.clientRef));
-  const run = await frankie.verifyExisting(survivor, intermediary.workflow, intermediary.id);
+  const verified = await verifyOrReuse(survivor, intermediary, null);
   if (rel.matchKey) store.remember(rel.matchKey, survivor);
   const merge = store.addMerge({
     id: `M-${Date.now().toString(36).toUpperCase()}`, at: new Date().toISOString(),
@@ -190,9 +253,8 @@ async function mergeInto(retiredId, pr, intermediary, rel, reason, decidedBy) {
     changes: {
       entityId: survivor,
       referenceId: (patched.individual?.externalReferences || []).find((r) => r.name === refName(intermediary.id))?.referenceId,
-      executionId: run.workflowResult?.workflowExecutionId, workflowStatus: run.workflowResult?.status,
-      reusedRecord: true, mergedFrom: retiredId, completedAt: new Date().toISOString(),
-      ...outcome(run.workflowResult || {}),
+      reusedRecord: true, mergedFrom: retiredId,
+      ...verifiedChanges(verified, intermediary),
     },
   };
 }
@@ -243,8 +305,8 @@ async function verifyPerson(intermediary, person, refValue, log, opts = {}) {
     if (known) {
       // Another intermediary already holds this person.
       const patched = await frankie.addReference(known, reference(intermediary, refValue));
-      const run = await frankie.verifyExisting(known, intermediary.workflow, intermediary.id);
-      return { entityId: known, reused: true, run, refs: patched.individual?.externalReferences };
+      const verified = await verifyOrReuse(known, intermediary, log, who);
+      return { entityId: known, reused: true, verified, refs: patched.individual?.externalReferences };
     }
     // New to the platform's index: create the record and run the platform's
     // duplicate check in one call. The intermediary's own verification follows.
@@ -280,11 +342,11 @@ async function verifyPerson(intermediary, person, refValue, log, opts = {}) {
   if (settled.setAside) log.step(`Duplicate check: set aside ${settled.setAside} matches against records that aren't the platform's (shared demo account).`);
   if (settled.merge) {
     const target = settled.merge.supplementaryData.duplicateEntityId;
-    log.step(`Duplicate check: ${who} matches record ${short(target)} (held by ${holders(target)}) on ${matchedOn(settled.merge).join(', ').toLowerCase()}. The merge policy is met, so the platform merges without a person.`);
+    log.step(`Duplicate check: ${who} matches record ${short(target)} (held by ${holders(target)}) on ${matchedOn(settled.merge).join(', ').toLowerCase()}. The merge policy (${policyReason(settled.merge)}) is met, so the platform resolves it without a person.`);
     const { changes } = await mergeInto(result.entityId, settled.merge, intermediary, rel,
-      `Merged automatically: matched on ${matchedOn(settled.merge).join(', ').toLowerCase()} under the merge policy.`, 'Merge policy');
-    store.update(rel, changes);
-    log.step(`FrankieOne: kept record ${short(target)}, retired ${short(result.entityId)}, moved ${poss(intermediary.name)} reference and ran ${intermediary.workflow} → ${changes.workflowStatus}.`, 'frankieone');
+      `Merged automatically: matched on ${policyReason(settled.merge)} under the merge policy.`, 'Merge policy');
+    recordReuse(rel, changes);
+    log.step(`FrankieOne: kept record ${short(target)}, retired ${short(result.entityId)} and moved ${poss(intermediary.name)} reference. ${changes.lastReuse ? 'Existing checks reused' : `Ran ${intermediary.workflow}`} → ${changes.workflowStatus}.`, 'frankieone');
   } else if (settled.hold) {
     const c = settled.hold[0];
     log.step(`Duplicate check: ${who} may be record ${short(c.supplementaryData.duplicateEntityId)} (held by ${holders(c.supplementaryData.duplicateEntityId)}), matched on ${matchedOn(c).join(', ').toLowerCase()}. No document match, so the merge policy isn't met: held for compliance.`);
@@ -298,10 +360,17 @@ async function verifyPerson(intermediary, person, refValue, log, opts = {}) {
   } else {
     if (result.created) log.step(`Duplicate check: no match for ${who} in the platform's network.`);
     if (!known) store.remember(key, result.entityId);
-    const run = settled.run || await schedule(intermediary.id, result.entityId, () => frankie.verifyExisting(result.entityId, intermediary.workflow, intermediary.id));
-    const wr = run.workflowResult || {};
-    store.update(rel, { executionId: wr.workflowExecutionId, workflowStatus: wr.status, completedAt: now, ...outcome(wr) });
-    log.step(`FrankieOne: ran ${poss(intermediary.name)} own workflow (${intermediary.workflow}) on record ${short(result.entityId)} → ${wr.status}.`, 'frankieone');
+    if (result.verified) {
+      recordReuse(rel, verifiedChanges(result.verified, intermediary));
+      log.step(result.verified.reused
+        ? `FrankieOne: no workflow run. ${intermediary.name} gets ${STATUS_LABEL[rel.status]} from the checks already passed.`
+        : `FrankieOne: ran ${poss(intermediary.name)} own workflow (${intermediary.workflow}) on record ${short(result.entityId)} → ${rel.workflowStatus}.`, 'frankieone');
+    } else {
+      const run = await schedule(intermediary.id, result.entityId, () => frankie.verifyExisting(result.entityId, intermediary.workflow, intermediary.id));
+      const wr = run.workflowResult || {};
+      store.update(rel, { executionId: wr.workflowExecutionId, workflowStatus: wr.status, completedAt: now, ...outcome(wr) });
+      log.step(`FrankieOne: ran ${poss(intermediary.name)} own workflow (${intermediary.workflow}) on record ${short(result.entityId)} → ${wr.status}.`, 'frankieone');
+    }
   }
   return { rel };
 }
@@ -581,11 +650,11 @@ export async function decide(reviewId, decision, candidateEntityId) {
     if (others.length) await frankie.resolveDuplicates(review.newEntityId, others, 'FALSE_POSITIVE', 'Compliance: a different person.');
     const { changes, merge } = await mergeInto(review.newEntityId, { processResultId: chosen.processResultId, supplementaryData: { duplicateEntityId: chosen.entityId, matchedFields: chosen.matchedOn.map((t) => ({ objectType: t })) } },
       intermediary, rel, 'Compliance: confirmed the same person after comparing the records.', 'Compliance');
-    store.update(rel, { ...changes, reviewId: null });
+    recordReuse(rel, { ...changes, reviewId: null });
     Object.assign(review, { decidedAt: new Date().toISOString(), decision: 'merge', mergeId: merge.id });
     const log = tracer(intermediary, rel.clientRef, `Compliance decided: same person`);
     log.step(`FrankieOne: confirmed the duplicate (TRUE_POSITIVE_REJECT): kept record ${short(chosen.entityId)}, retired ${short(review.newEntityId)}.`, 'frankieone');
-    log.step(`FrankieOne: moved ${poss(intermediary.name)} reference to ${short(chosen.entityId)} and ran ${intermediary.workflow} → ${changes.workflowStatus}.`, 'frankieone');
+    log.step(`FrankieOne: moved ${poss(intermediary.name)} reference to ${short(chosen.entityId)}. ${changes.lastReuse ? `Existing checks reused (${changes.lastReuse.sourceWorkflow}), no new run` : `Ran ${intermediary.workflow}`} → ${changes.workflowStatus}.`, 'frankieone');
     log.done(`${intermediary.name} sees ${STATUS_LABEL[rel.status]}, with the same handle`);
   } else {
     await frankie.resolveDuplicates(review.newEntityId, review.candidates.map((c) => c.processResultId), 'FALSE_POSITIVE', 'Compliance: different people.');
@@ -636,6 +705,26 @@ export function forgetIndex(entityId) {
 }
 
 /** Re-read one intermediary's own verification, e.g. after compliance resolves it in the Portal. */
+/**
+ * An intermediary asks to re-run checks on an individual client. If a passed
+ * run within the reuse window already covers its workflow (its own, or one
+ * run for anyone else on the network), that is reused and nothing new runs.
+ */
+export async function rerun(intermediary, handle) {
+  const started = Date.now();
+  const rel = store.find(intermediary.id, handle);
+  if (!rel || rel.kind !== 'client') throw new ClientError(404, 'NOT_FOUND', 'Re-running checks is available for individual clients.');
+  if (rel.reviewId) throw new ClientError(409, 'IN_REVIEW', 'This application is being reviewed. Checks can be re-run once it is resolved.');
+  const log = tracer(intermediary, rel.clientRef, `${intermediary.name} re-ran checks for ${rel.name}`);
+  const v = await schedule(intermediary.id, rel.entityId, () => verifyOrReuse(rel.entityId, intermediary, log, rel.name));
+  recordReuse(rel, verifiedChanges(v, intermediary));
+  log.step(v.reused
+    ? `FrankieOne: no workflow run. ${intermediary.name} gets ${STATUS_LABEL[rel.status]} from the checks already passed.`
+    : `FrankieOne: nothing reusable, so ran ${intermediary.workflow} on record ${short(rel.entityId)} → ${rel.workflowStatus}.`, 'frankieone');
+  log.done(`${intermediary.name} sees ${STATUS_LABEL[rel.status]}`);
+  return heldTo(POLICY.minResponseMs, started, respond(rel, 'rerun'));
+}
+
 export async function refresh(intermediary, handle) {
   const rel = store.find(intermediary.id, handle);
   if (!rel || rel.kind === 'related') throw new ClientError(404, 'NOT_FOUND', 'No such client.');

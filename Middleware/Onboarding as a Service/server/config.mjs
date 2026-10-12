@@ -59,6 +59,10 @@ export const POLICY = {
   // document and an exact date of birth, and there is a single candidate.
   // Everything else is held for compliance.
   autoMergeOnDocumentAndDob: setting('AUTO_MERGE', 'true') !== 'false',
+  // Also merge without a person when name, date of birth and address all match exactly (one candidate).
+  autoMergeOnNameDobAddress: setting('AUTO_MERGE_NAME_DOB_ADDRESS', 'false') === 'true',
+  // Reuse a passed run already on the record, within the reuse window, instead of running checks again.
+  reuseEvidence: setting('REUSE_EVIDENCE', 'true') !== 'false',
   // On a shared demo account, FrankieOne's duplicate check also matches
   // records that aren't the platform's (other demos' test people). Those are
   // set aside automatically. On a dedicated account, set this to false: every
@@ -119,6 +123,16 @@ export const INTERMEDIARIES = [...NAMED, ...GENERATED];
  * own verification. It catches the same person the identity index missed,
  * for example someone who used a different document at each intermediary.
  */
+/**
+ * The checks each intermediary workflow needs. A passed run whose passed
+ * checks include all of these can stand in for running the workflow again.
+ */
+export const REQUIRED_CHECKS = {
+  'AUS-Basic2V-TwoPlus': ['MATCHLIST', 'KYC', 'AML'],
+  'AUS-Basic2V-TwoPlusID': ['MATCHLIST', 'KYC', 'AML'],
+};
+export const requiredChecks = (workflow) => REQUIRED_CHECKS[workflow] || ['MATCHLIST', 'KYC', 'AML'];
+
 export const DUPLICATE_WORKFLOW = setting('DUPLICATE_WORKFLOW', 'AUS-Basic2V-TwoPlus-Duplicate');
 /** OneSDK flow for the hosted ID check (document photo and selfie) an intermediary can send a client. */
 export const IDV_FLOW = setting('IDV_FLOW', 'idv_daon');
