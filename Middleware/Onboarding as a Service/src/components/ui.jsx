@@ -1,10 +1,11 @@
-import { NavLink } from 'react-router-dom';
-import { Loader2 } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Link, NavLink } from 'react-router-dom';
+import { ChevronRight, Loader2, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 
 /**
- * The small design system both consoles share: an app shell with a sidebar,
- * page headers, cards, status pills, tabs and empty states. Spacing and type
- * live here so the pages stay consistent.
+ * The shared design system, in the style of a CRM: a collapsible sidebar,
+ * a slim top bar with breadcrumbs, full-width lists, and record pages laid
+ * out as attributes | activity | related items.
  */
 
 export const fmtDate = (iso) => (iso ? new Date(iso).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }) : '—');
@@ -14,140 +15,163 @@ export const ago = (iso) => {
   if (!iso) return '';
   const s = Math.round((Date.now() - Date.parse(iso)) / 1000);
   if (s < 60) return 'just now';
-  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
-  if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
   return fmtDate(iso);
 };
+const initials = (name) => String(name || '?').split(/\s+/).filter((w) => /^[A-Za-z]/.test(w)).map((w) => w[0]).slice(0, 2).join('').toUpperCase();
 
 // ── shell ───────────────────────────────────────────────────────────
-/**
- * Sidebar + content. `brand` is the block at the top of the sidebar, `nav`
- * a list of { to, label, icon, badge, end }, `footer` anything under it.
- */
-export function Shell({ brand, nav, footer, dark, children }) {
+const SIDEBAR_KEY = 'oaas.sidebar';
+const readCollapsed = () => {
+  try { const v = localStorage.getItem(SIDEBAR_KEY); return v ? v === 'collapsed' : window.innerWidth < 1100; } catch { return false; }
+};
+
+/** Collapsible sidebar + content. `nav` is a list of { to, label, icon, badge, end }. */
+export function Shell({ brand, nav, footer, children }) {
+  const [collapsed, setCollapsed] = useState(readCollapsed);
+  const toggle = () => {
+    const next = !collapsed;
+    setCollapsed(next);
+    try { localStorage.setItem(SIDEBAR_KEY, next ? 'collapsed' : 'open'); } catch { /* private mode */ }
+  };
   return (
-    <div className="min-h-[calc(100vh-1.5rem)] flex">
-      <aside className={`hidden lg:flex w-64 shrink-0 flex-col border-r ${dark ? 'bg-navy text-slate-300 border-navy' : 'bg-white text-slate-600 border-slate-200'}`}>
-        <div className="sticky top-6 flex flex-col h-[calc(100vh-1.5rem)]">
-          <div className="px-5 pt-6 pb-5">{brand}</div>
-          <nav className="px-3 space-y-0.5 flex-1">
-            {nav.map((n) => (
-              <NavLink key={n.to} to={n.to} end={n.end}
-                className={({ isActive }) => `flex items-center gap-3 px-3 py-2 rounded-lg text-[14px] transition ${isActive
-                  ? dark ? 'bg-white/10 text-white font-medium' : 'bg-slate-100 text-slate-900 font-medium'
-                  : dark ? 'hover:bg-white/5 hover:text-white' : 'hover:bg-slate-50 hover:text-slate-900'}`}>
-                {n.icon && <n.icon className="w-[18px] h-[18px] shrink-0" strokeWidth={1.75} />}
-                <span className="flex-1">{n.label}</span>
-                {n.badge ? <span className="text-[11px] font-semibold min-w-5 h-5 px-1.5 rounded-full bg-amber-400 text-amber-950 flex items-center justify-center">{n.badge}</span> : null}
-              </NavLink>
-            ))}
-          </nav>
-          {footer && <div className={`px-3 py-4 border-t ${dark ? 'border-white/10' : 'border-slate-100'}`}>{footer}</div>}
+    <div className="h-full flex bg-white text-slate-900">
+      <aside className={`${collapsed ? 'w-[60px]' : 'w-[232px]'} shrink-0 border-r border-slate-200 bg-[#fafafa] flex flex-col transition-[width] duration-150`}>
+        <div className={`h-14 shrink-0 flex items-center border-b border-slate-200 ${collapsed ? 'justify-center' : 'pl-3 pr-2 gap-2'}`}>
+          {collapsed ? (
+            <button onClick={toggle} title="Expand sidebar" className="w-9 h-9 rounded-md flex items-center justify-center text-slate-500 hover:bg-slate-200/60 hover:text-slate-900">
+              <PanelLeftOpen className="w-[18px] h-[18px]" strokeWidth={1.75} />
+            </button>
+          ) : (
+            <>
+              <div className="flex-1 min-w-0 flex items-center gap-2">{brand(false)}</div>
+              <button onClick={toggle} title="Collapse sidebar" className="w-8 h-8 rounded-md flex items-center justify-center text-slate-400 hover:bg-slate-200/60 hover:text-slate-900 shrink-0">
+                <PanelLeftClose className="w-[18px] h-[18px]" strokeWidth={1.75} />
+              </button>
+            </>
+          )}
         </div>
+        <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5">
+          {nav.map((n) => (
+            <NavLink key={n.to} to={n.to} end={n.end} title={collapsed ? n.label : undefined}
+              className={({ isActive }) => `relative flex items-center gap-2.5 h-8 rounded-md text-[13px] ${collapsed ? 'justify-center' : 'px-2.5'} ${isActive ? 'bg-white text-slate-900 font-medium shadow-[0_0_0_1px_#e5e7eb]' : 'text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'}`}>
+              {n.icon && <n.icon className="w-4 h-4 shrink-0" strokeWidth={1.75} />}
+              {!collapsed && <span className="flex-1 truncate">{n.label}</span>}
+              {n.badge ? (collapsed
+                ? <span className="absolute top-1 right-1.5 w-1.5 h-1.5 rounded-full bg-orange-500" />
+                : <span className="text-[11px] font-medium text-orange-700 bg-orange-100 rounded px-1.5">{n.badge}</span>) : null}
+            </NavLink>
+          ))}
+        </nav>
+        {footer && <div className="border-t border-slate-200 p-2 space-y-0.5">{footer(collapsed)}</div>}
       </aside>
-      <div className="flex-1 min-w-0">
-        {/* Compact bar for narrower screens: brand, sections and a menu for the sidebar's footer */}
-        <div className={`lg:hidden sticky top-6 z-30 border-b ${dark ? 'bg-navy border-navy' : 'bg-white border-slate-200'}`}>
-          <div className="px-4 pt-3 flex items-center justify-between gap-3">
-            <div className="min-w-0 [&_p]:truncate">{brand}</div>
-            {footer && (
-              <details className="relative">
-                <summary className={`list-none cursor-pointer px-3 py-1.5 rounded-lg text-sm ${dark ? 'text-slate-300 hover:bg-white/10' : 'text-slate-600 hover:bg-slate-100'}`}>Menu</summary>
-                <div className={`absolute right-0 mt-2 w-56 rounded-xl border p-2 shadow-lg ${dark ? 'bg-navy border-white/10 text-slate-300' : 'bg-white border-slate-200 text-slate-600'}`}>{footer}</div>
-              </details>
-            )}
-          </div>
-          <nav className="px-4 py-3 flex gap-1.5 overflow-x-auto [scrollbar-width:none]">
-            {nav.map((n) => (
-              <NavLink key={n.to} to={n.to} end={n.end}
-                className={({ isActive }) => `px-3 py-1.5 rounded-full text-sm whitespace-nowrap ${isActive ? 'bg-brand text-white' : dark ? 'text-slate-300 hover:bg-white/10' : 'text-slate-600 hover:bg-slate-100'}`}>
-                {n.label}{n.badge ? ` (${n.badge})` : ''}
-              </NavLink>
-            ))}
-          </nav>
-        </div>
-        <main className="px-5 md:px-8 lg:px-10 py-8 lg:py-10 max-w-[1240px]">{children}</main>
-      </div>
+      <div className="flex-1 min-w-0 flex flex-col">{children}</div>
     </div>
   );
 }
 
-export function SideButton({ icon: Icon, children, onClick, dark }) {
+export function SideButton({ icon: Icon, children, onClick, collapsed }) {
   return (
-    <button onClick={onClick} className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-[14px] ${dark ? 'hover:bg-white/5 hover:text-white' : 'hover:bg-slate-50 hover:text-slate-900'}`}>
-      {Icon && <Icon className="w-[18px] h-[18px]" strokeWidth={1.75} />} {children}
+    <button onClick={onClick} title={collapsed ? children : undefined}
+      className={`w-full flex items-center gap-2.5 h-8 rounded-md text-[13px] text-slate-500 hover:bg-slate-200/50 hover:text-slate-900 ${collapsed ? 'justify-center' : 'px-2.5'}`}>
+      {Icon && <Icon className="w-4 h-4 shrink-0" strokeWidth={1.75} />}{!collapsed && children}
     </button>
   );
 }
 
-// ── page structure ──────────────────────────────────────────────────
-export function PageHeader({ eyebrow, title, description, actions, children }) {
+/** The slim bar at the top of every page: breadcrumbs on the left, actions on the right. */
+export function TopBar({ crumbs, actions }) {
   return (
-    <div className="mb-8">
-      {eyebrow && <div className="mb-3">{eyebrow}</div>}
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
-        <div className="min-w-0">
-          <h1 className="text-[28px] leading-tight font-semibold tracking-tight text-slate-900">{title}</h1>
-          {description && <p className="mt-2 text-[15px] text-slate-500 max-w-2xl">{description}</p>}
-          {children}
-        </div>
-        {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}
+    <header className="h-14 shrink-0 border-b border-slate-200 px-5 flex items-center justify-between gap-4">
+      <nav className="flex items-center gap-1.5 min-w-0 text-[14px]">
+        {crumbs.map((c, i) => (
+          <span key={i} className="flex items-center gap-1.5 min-w-0">
+            {i > 0 && <ChevronRight className="w-3.5 h-3.5 text-slate-300 shrink-0" />}
+            {c.to ? <Link to={c.to} className="text-slate-500 hover:text-slate-900 truncate">{c.label}</Link>
+              : <span className="font-medium text-slate-900 truncate">{c.label}</span>}
+          </span>
+        ))}
+      </nav>
+      <div className="flex items-center gap-2 shrink-0">{actions}</div>
+    </header>
+  );
+}
+
+/** Scrolling page body under the top bar. */
+export function Body({ children, padded = true }) {
+  return <div className={`flex-1 min-h-0 overflow-y-auto ${padded ? 'px-5 py-5' : ''}`}>{children}</div>;
+}
+
+// ── lists ───────────────────────────────────────────────────────────
+/** View tabs with counts, plus search, above a list. */
+export function ListToolbar({ views, value, onChange, search, onSearch, placeholder = 'Search' }) {
+  return (
+    <div className="h-12 shrink-0 px-5 border-b border-slate-200 flex items-center justify-between gap-4">
+      <div className="flex items-center gap-1 overflow-x-auto [scrollbar-width:none]">
+        {views.map(([k, label, count]) => (
+          <button key={k} onClick={() => onChange(k)}
+            className={`h-7 px-2.5 rounded-md text-[13px] whitespace-nowrap flex items-center gap-1.5 ${value === k ? 'bg-slate-100 text-slate-900 font-medium' : 'text-slate-500 hover:text-slate-900'}`}>
+            {label}{count != null && <span className="text-slate-400 font-normal">{count}</span>}
+          </button>
+        ))}
       </div>
+      {onSearch && (
+        <input value={search} onChange={(e) => onSearch(e.target.value)} placeholder={placeholder}
+          className="w-56 h-8 rounded-md border border-slate-200 px-3 text-[13px] placeholder:text-slate-400 focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20" />
+      )}
     </div>
   );
 }
 
-export function Card({ title, description, actions, children, padded = true, className = '' }) {
+export const th = 'h-9 px-4 text-left text-[12px] font-medium text-slate-500 border-b border-slate-200 bg-[#fafafa] whitespace-nowrap sticky top-0 z-10';
+export const td = 'h-12 px-4 text-[13px] border-b border-slate-100 whitespace-nowrap';
+
+export function Avatar({ name, kind, size = 'md' }) {
+  const s = size === 'lg' ? 'w-11 h-11 text-[14px] rounded-lg' : size === 'sm' ? 'w-6 h-6 text-[10px] rounded-md' : 'w-7 h-7 text-[11px] rounded-md';
+  const tone = kind === 'BUSINESS' || kind === 'ORGANIZATION' ? 'bg-violet-100 text-violet-700' : 'bg-sky-100 text-sky-700';
+  return <span className={`${s} ${tone} font-semibold flex items-center justify-center shrink-0`}>{initials(name)}</span>;
+}
+
+// ── record pages ────────────────────────────────────────────────────
+/** Attributes | main | related. Each column scrolls on its own on wide screens. */
+export function RecordLayout({ left, main, right }) {
   return (
-    <section className={`bg-white rounded-2xl border border-slate-200/80 shadow-[0_1px_2px_rgba(15,23,42,0.04)] ${className}`}>
-      {(title || actions) && (
-        <header className="px-6 pt-5 pb-4 flex items-start justify-between gap-4 border-b border-slate-100">
-          <div>
-            {title && <h2 className="text-[15px] font-semibold text-slate-900">{title}</h2>}
-            {description && <p className="mt-0.5 text-sm text-slate-500">{description}</p>}
-          </div>
-          {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}
-        </header>
-      )}
-      <div className={padded ? 'p-6' : ''}>{children}</div>
-    </section>
+    <div className="flex-1 min-h-0 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden">
+      <aside className="lg:w-[290px] shrink-0 border-b lg:border-b-0 lg:border-r border-slate-200 lg:overflow-y-auto">
+        {left}
+        {/* Below xl the related column folds into the left one. */}
+        {right && <div className="xl:hidden border-t border-slate-200">{right}</div>}
+      </aside>
+      <section className="flex-1 min-w-0 lg:overflow-y-auto flex flex-col">{main}</section>
+      {right && <aside className="hidden xl:block w-[320px] shrink-0 border-l border-slate-200 overflow-y-auto">{right}</aside>}
+    </div>
   );
 }
 
-export function Section({ title, description, actions, children, className = '' }) {
+/** A titled block inside a side panel. */
+export function Panel({ title, count, action, children }) {
   return (
-    <section className={`mt-10 first:mt-0 ${className}`}>
-      <div className="mb-4 flex items-end justify-between gap-4">
-        <div>
-          <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
-          {description && <p className="mt-1 text-sm text-slate-500 max-w-2xl">{description}</p>}
+    <section className="px-5 py-4 border-b border-slate-200 last:border-b-0">
+      {title && (
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <h3 className="text-[12px] font-semibold text-slate-500">{title}{count != null && <span className="ml-1.5 text-slate-400 font-normal">{count}</span>}</h3>
+          {action}
         </div>
-        {actions}
-      </div>
+      )}
       {children}
     </section>
   );
 }
 
-export function Stat({ label, value, tone, hint }) {
-  const tones = { amber: 'text-amber-600', green: 'text-green-600', red: 'text-red-600', brand: 'text-brand' };
+/** Label/value attribute rows, as in a CRM record's sidebar. */
+export function Attributes({ rows }) {
   return (
-    <div className="bg-white rounded-2xl border border-slate-200/80 px-5 py-4">
-      <p className="text-[13px] text-slate-500">{label}</p>
-      <p className={`mt-1 text-[28px] font-semibold tracking-tight ${tones[tone] || 'text-slate-900'}`}>{value}</p>
-      {hint && <p className="text-xs text-slate-400">{hint}</p>}
-    </div>
-  );
-}
-
-/** Label/value rows for a details card. */
-export function Details({ rows }) {
-  return (
-    <dl className="divide-y divide-slate-100">
+    <dl className="space-y-3">
       {rows.filter(Boolean).map(([label, value], i) => (
-        <div key={i} className="py-3 first:pt-0 last:pb-0 flex items-baseline justify-between gap-4">
-          <dt className="text-sm text-slate-500">{label}</dt>
-          <dd className="text-sm text-slate-900 text-right min-w-0 break-words">{value ?? '—'}</dd>
+        <div key={i} className="grid grid-cols-[104px_1fr] gap-3 items-baseline">
+          <dt className="text-[13px] text-slate-500">{label}</dt>
+          <dd className="text-[13px] text-slate-900 min-w-0 break-words">{value ?? '—'}</dd>
         </div>
       ))}
     </dl>
@@ -156,11 +180,11 @@ export function Details({ rows }) {
 
 export function Tabs({ tabs, value, onChange }) {
   return (
-    <div className="flex gap-6 overflow-x-auto overflow-y-hidden shadow-[inset_0_-1px_0_#e2e8f0] [scrollbar-width:none]">
+    <div className="h-11 px-5 border-b border-slate-200 flex items-end gap-5 overflow-x-auto [scrollbar-width:none] shrink-0">
       {tabs.map(([k, label, count]) => (
         <button key={k} onClick={() => onChange(k)}
-          className={`pb-3 text-[14px] whitespace-nowrap border-b-2 transition ${value === k ? 'border-slate-900 text-slate-900 font-medium' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>
-          {label}{count != null && <span className="ml-1.5 text-xs text-slate-400">{count}</span>}
+          className={`pb-2.5 text-[13px] whitespace-nowrap border-b-2 ${value === k ? 'border-slate-900 text-slate-900 font-medium' : 'border-transparent text-slate-500 hover:text-slate-900'}`}>
+          {label}{count != null && <span className="ml-1 text-slate-400 font-normal">{count}</span>}
         </button>
       ))}
     </div>
@@ -169,41 +193,55 @@ export function Tabs({ tabs, value, onChange }) {
 
 export function Empty({ icon: Icon, title, children }) {
   return (
-    <div className="py-12 text-center">
-      {Icon && <Icon className="mx-auto w-8 h-8 text-slate-300" strokeWidth={1.5} />}
-      {title && <p className="mt-3 text-[15px] font-medium text-slate-700">{title}</p>}
-      {children && <p className="mt-1 text-sm text-slate-500 max-w-sm mx-auto">{children}</p>}
+    <div className="py-14 text-center">
+      {Icon && <Icon className="mx-auto w-7 h-7 text-slate-300" strokeWidth={1.5} />}
+      {title && <p className="mt-2 text-[13px] font-medium text-slate-700">{title}</p>}
+      {children && <p className="mt-1 text-[13px] text-slate-500 max-w-xs mx-auto">{children}</p>}
     </div>
   );
 }
 
 export function Loading({ children = 'Loading…' }) {
-  return <p className="py-10 text-sm text-slate-500 flex items-center justify-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> {children}</p>;
+  return <p className="py-12 text-[13px] text-slate-500 flex items-center justify-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> {children}</p>;
 }
 
-export function Callout({ icon: Icon, tone = 'slate', children }) {
-  const tones = { slate: 'bg-slate-50 border-slate-200 text-slate-700', amber: 'bg-amber-50 border-amber-200 text-amber-900', blue: 'bg-blue-50/60 border-blue-100 text-slate-700' };
+/** A small dropdown anchored to a button. Items with data-close shut it. */
+export function Menu({ label, children, align = 'right', className, width = 'min-w-[200px]' }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    const close = (e) => { if (!ref.current?.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [open]);
   return (
-    <div className={`rounded-xl border px-4 py-3 text-sm flex gap-3 ${tones[tone]}`}>
-      {Icon && <Icon className="w-[18px] h-[18px] shrink-0 mt-0.5 opacity-70" strokeWidth={1.75} />}
-      <div className="min-w-0">{children}</div>
+    <div ref={ref} className="relative">
+      <button onClick={() => setOpen(!open)} className={className || btn.secondary}>{label}</button>
+      {open && (
+        <div onClick={(e) => e.target.closest('[data-close]') && setOpen(false)}
+          className={`absolute z-30 mt-1 ${align === 'right' ? 'right-0' : 'left-0'} ${width} rounded-lg border border-slate-200 bg-white shadow-lg p-1`}>
+          {children}
+        </div>
+      )}
     </div>
   );
 }
+export const menuItem = 'w-full text-left flex items-center gap-2 px-2.5 h-8 rounded-md text-[13px] text-slate-700 hover:bg-slate-100';
 
 // ── status ──────────────────────────────────────────────────────────
 const STATUS = {
-  VERIFIED: ['Verified', 'bg-green-50 text-green-700 ring-green-600/15', 'bg-green-500'],
-  IN_REVIEW: ['In review', 'bg-amber-50 text-amber-800 ring-amber-600/20', 'bg-amber-500'],
-  ACTION_REQUIRED: ['Action required', 'bg-orange-50 text-orange-800 ring-orange-600/20', 'bg-orange-500'],
-  DECLINED: ['Declined', 'bg-red-50 text-red-700 ring-red-600/15', 'bg-red-500'],
+  VERIFIED: ['Verified', 'text-green-700 bg-green-50', 'bg-green-500'],
+  IN_REVIEW: ['In review', 'text-amber-800 bg-amber-50', 'bg-amber-500'],
+  ACTION_REQUIRED: ['Action required', 'text-orange-800 bg-orange-50', 'bg-orange-500'],
+  DECLINED: ['Declined', 'text-red-700 bg-red-50', 'bg-red-500'],
 };
 export const statusLabel = (s) => STATUS[s]?.[0] || s;
 
 export function StatusPill({ status }) {
-  const [label, cls, dot] = STATUS[status] || [status, 'bg-slate-50 text-slate-600 ring-slate-500/15', 'bg-slate-400'];
+  const [label, cls, dot] = STATUS[status] || [status, 'text-slate-600 bg-slate-100', 'bg-slate-400'];
   return (
-    <span className={`inline-flex items-center gap-1.5 text-[12px] font-medium px-2 py-0.5 rounded-full ring-1 ring-inset whitespace-nowrap ${cls}`}>
+    <span className={`inline-flex items-center gap-1.5 h-[22px] px-2 rounded-md text-[12px] font-medium whitespace-nowrap ${cls}`}>
       <span className={`w-1.5 h-1.5 rounded-full ${dot}`} />{label}
     </span>
   );
@@ -214,24 +252,24 @@ export function Badge({ children, tone = 'slate' }) {
     slate: 'bg-slate-100 text-slate-700', blue: 'bg-blue-50 text-blue-700', amber: 'bg-amber-50 text-amber-800',
     green: 'bg-green-50 text-green-700', red: 'bg-red-50 text-red-700', violet: 'bg-violet-50 text-violet-700',
   };
-  return <span className={`inline-flex items-center gap-1 text-[12px] font-medium px-2 py-0.5 rounded-md whitespace-nowrap ${tones[tone]}`}>{children}</span>;
+  return <span className={`inline-flex items-center gap-1 h-[22px] px-2 rounded-md text-[12px] font-medium whitespace-nowrap ${tones[tone]}`}>{children}</span>;
 }
 
 export const btn = {
-  primary: 'inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white bg-slate-900 hover:bg-slate-800 disabled:opacity-50 transition',
-  secondary: 'inline-flex items-center justify-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 disabled:opacity-50 transition',
-  ghost: 'inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm text-slate-600 hover:bg-slate-100 disabled:opacity-50 transition',
+  primary: 'inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-md text-[13px] font-medium text-white bg-slate-900 hover:bg-slate-800 disabled:opacity-40 transition',
+  secondary: 'inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-md text-[13px] font-medium text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 disabled:opacity-40 transition',
+  ghost: 'inline-flex items-center justify-center gap-1.5 h-8 px-2.5 rounded-md text-[13px] text-slate-600 hover:bg-slate-100 disabled:opacity-40 transition',
 };
 
-export const input = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-[14px] text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition';
+export const input = 'w-full h-9 rounded-md border border-slate-200 bg-white px-3 text-[13px] text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition';
 
 export function Field({ label, hint, children, span = 1 }) {
   const spans = { 1: '', 2: 'sm:col-span-2', 3: 'sm:col-span-3', 4: 'sm:col-span-4', 6: 'sm:col-span-6' };
   return (
     <label className={`block ${spans[span]}`}>
-      <span className="block text-[13px] font-medium text-slate-700 mb-1.5">{label}</span>
+      <span className="block text-[12px] font-medium text-slate-600 mb-1">{label}</span>
       {children}
-      {hint && <span className="block mt-1.5 text-xs text-slate-500">{hint}</span>}
+      {hint && <span className="block mt-1 text-[12px] text-slate-400">{hint}</span>}
     </label>
   );
 }

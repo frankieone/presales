@@ -6,9 +6,13 @@ import ConsoleLayout from './pages/console/Layout';
 import Clients from './pages/console/Clients';
 import ClientPage from './pages/console/ClientPage';
 import Onboard from './pages/console/Onboard';
+import { useParams } from 'react-router-dom';
 import PlatformLayout from './pages/platform/Layout';
 import Record from './pages/platform/Record';
-import { ActivityLog, Decisions, Disclosures, Merges, Overview, Policies, Records } from './pages/platform/pages';
+import { ActivityLog, Decisions, Disclosures, Merges, Policies, Records } from './pages/platform/pages';
+
+// A fresh client page per client, so nothing carries over when moving between them.
+function KeyedClientPage() { const { handle } = useParams(); return <ClientPage key={handle} />; }
 
 export default function App() {
   const [demo, setDemo] = useState(null);
@@ -17,23 +21,24 @@ export default function App() {
 
   return (
     <BrowserRouter>
-      <div className="fixed top-0 inset-x-0 z-50 h-6 bg-amber-300 text-amber-950 text-[11px] font-medium flex items-center justify-center">
+      <div className="h-screen flex flex-col">
+      <div className="h-6 shrink-0 bg-amber-300 text-amber-950 text-[11px] font-medium flex items-center justify-center">
         Connected to {demo?.envLabel || '…'} · Demo: every brand here is a placeholder
       </div>
-      <div className="pt-6 min-h-screen">
+      <div className="flex-1 min-h-0">
         {error && <p className="m-6 text-sm text-red-700">The platform server isn't reachable: {error}. Start it with npm run dev.</p>}
         {demo && (
           <Routes>
-            <Route path="/" element={<Home demo={demo} />} />
+            <Route path="/" element={<div className="h-full overflow-y-auto bg-[#f6f7f9]"><Home demo={demo} /></div>} />
             <Route path="/console" element={<ConsoleLayout demo={demo} />}>
               <Route index element={<Clients />} />
               <Route path="onboard" element={<Onboard />} />
-              <Route path="clients/:handle" element={<ClientPage />} />
+              <Route path="clients/:handle" element={<KeyedClientPage />} />
             </Route>
             <Route path="/platform" element={<PlatformLayout demo={demo} />}>
-              <Route index element={<Overview />} />
+              <Route index element={<Records />} />
               <Route path="decisions" element={<Decisions />} />
-              <Route path="records" element={<Records />} />
+              <Route path="records" element={<Navigate to="/platform" replace />} />
               <Route path="records/:entityId" element={<Record />} />
               <Route path="activity" element={<ActivityLog />} />
               <Route path="merges" element={<Merges />} />
@@ -43,6 +48,7 @@ export default function App() {
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         )}
+      </div>
       </div>
     </BrowserRouter>
   );

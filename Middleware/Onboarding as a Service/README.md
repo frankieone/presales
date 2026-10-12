@@ -26,9 +26,9 @@ Open http://localhost:8101. The start page signs you in as one of three intermed
 
 1. **Northgate Advisers** → **Onboard a client** → James Testone. He's new to the network: the platform creates his record and runs Northgate's workflow. Northgate sees **Verified**.
 2. **Bluewave Brokers** (second tab) → onboard the same James Testone. The platform recognises his licence and adds Bluewave's reference to the same record instead of creating a second one, then runs Bluewave's own workflow (which adds an ID check). Bluewave sees **Verified**, with a different handle from Northgate's. Neither knows the other holds him.
-3. Open the client → **The API response Bluewave received**. That's everything Bluewave received: no entity ID, no other intermediary, no score, no data source.
+3. Bluewave's API response (`GET /api/v1/clients/{handle}`) holds no entity ID, no other intermediary and no data source.
 4. **Kestrel Wealth** → onboard James Testeleven. He's a PEP match, so Kestrel sees **In review** with a neutral message. A compliance officer resolves it in the FrankieOne Portal; **Check status** then shows the outcome.
-5. **Platform operations** → **Records** → James: one record with two relationships, the handle each intermediary sees, which onboarding reused a record already held, and the disclosure log.
+5. **Platform operations** → James (under **Records**): one record with two relationships, the handle each intermediary sees, which onboarding reused a record already held, and the disclosure log.
 6. Back in Bluewave → **Client has left**. Only Bluewave's reference is removed. James's record and Northgate's relationship are untouched.
 
 Every onboarding response takes at least the minimum response time (10 seconds by default), so an intermediary can't tell a recognised investor from a new one by timing.
@@ -47,7 +47,7 @@ Every onboarding response takes at least the minimum response time (10 seconds b
 Clients can be businesses: companies, trusts, partnerships or other organisations, each with the people behind them (directors, trustees, partners, beneficial owners, signatories). Many trusts and partnerships have no ABN or ACN, so the platform doesn't require one.
 
 11. **Northgate Advisers** → **Onboard a client** → **Business** (or the demo helper's *Testone Family Trust*). No ABN or ACN, two trustees. The platform creates a business record, verifies each trustee (reusing a record if the person is already on the network) and links them with their role. With no register to check, Northgate sees **Action required: provide the document that establishes the business**, with each trustee's status.
-12. Upload the trust deed from the client's **Overview** → the document is attached to the business record and the business is **Verified**.
+12. Upload the trust deed from **Open tasks** on the client's page → the document is attached to the business record and the business is **Verified**.
 13. **Bluewave Brokers** → *Testone Holdings Pty Ltd*, with a made-up ACN. The register check runs and can't confirm it, so Bluewave is asked to check the number or provide a document.
 14. **Kestrel Wealth** → the same trust, again with no ABN. There's no number to match on, so the platform matches the normalised name and postcode. That's never enough to merge on its own, so the trust is held for a decision under **Needs a decision**, side by side.
 15. **Platform operations** → **Records**: the trust is one organisation record, and James is one record held as Northgate's trustee, as Bluewave's director and (if onboarded directly) as Northgate's own client.
@@ -64,7 +64,7 @@ Open any client to see its file, read live from FrankieOne:
 
 From the file, an intermediary can **add a document** (attached to the FrankieOne record) or **create an ID verification link**: a one-time hosted OneSDK link for the client to photograph their ID and take a selfie. The photos and results then appear in the file.
 
-**What each side sees.** An intermediary's file is scoped to its own relationship: only its own verification runs, the documents it supplied or collected, risk factors that don't describe someone else's submission, and audit events from its own runs. Risk shows as a level, without scores. If another intermediary also holds the client, nothing of theirs appears. The platform's file (any record under **Records**) shows everything on the record: every run and which intermediary it was for, the duplicate checks, scores, every document and the full audit trail.
+**What each side sees.** An intermediary's file is scoped to its own relationship: only its own verification runs, the documents it supplied or collected, risk factors that don't describe someone else's submission, and audit events from its own runs. Risk shows as a level and the score from its own runs (set `SHARE_RISK_SCORE=false` to show the level only). If another intermediary also holds the client, nothing of theirs appears. The platform's file (any record under **Records**) shows everything on the record: every run and which intermediary it was for, the duplicate checks, scores, every document and the full audit trail.
 
 16. **Bluewave Brokers** → James → **Documents** → add a bank statement. Then **Northgate Advisers** → James → **Documents**: the bank statement isn't there.
 17. **Platform operations** → **Records** → James → **Verifications** and **Documents**: both intermediaries' runs, attributed, and the bank statement marked as added by Bluewave.

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { CheckCircle2, XCircle, CircleDashed, FileText, Image as ImageIcon, Loader2, Upload, Smartphone, Copy, ExternalLink, ShieldCheck, FolderOpen, History as HistoryIcon, Check } from 'lucide-react';
+import { Check, CheckCircle2, ChevronRight, CircleDashed, Copy, ExternalLink, FileText, FolderOpen, History as HistoryIcon, Image as ImageIcon, Loader2, ShieldCheck, Upload, XCircle } from 'lucide-react';
 import { fileUrl } from '../api';
-import { Badge, Empty, btn, fmtDate, fmtDateTime, fmtTime } from './ui';
+import { Badge, Empty, Panel, btn, fmtDate, fmtDateTime, fmtTime, input } from './ui';
 
 /**
  * The client file: verifications, risk, documents and history, as FrankieOne
@@ -11,181 +11,227 @@ import { Badge, Empty, btn, fmtDate, fmtDateTime, fmtTime } from './ui';
  */
 const fmt = fmtDateTime;
 const RESULT_TONE = { Passed: 'green', Complete: 'green', Failed: 'red', Blocked: 'red', 'Needs review': 'amber', 'In progress': 'blue' };
-const RISK = {
-  Low: ['text-green-700', 'bg-green-50', 'border-green-200'],
-  Medium: ['text-amber-700', 'bg-amber-50', 'border-amber-200'],
-  High: ['text-red-700', 'bg-red-50', 'border-red-200'],
-  Unacceptable: ['text-red-700', 'bg-red-50', 'border-red-200'],
-};
+const RISK_TEXT = { Low: 'text-green-700', Medium: 'text-amber-700', High: 'text-red-700', Unacceptable: 'text-red-700' };
 
 export function Result({ value }) {
   if (!value) return null;
   return <Badge tone={RESULT_TONE[value] || 'slate'}>{value}</Badge>;
 }
 
-function RiskChip({ level, score }) {
-  if (!level) return null;
-  const [text] = RISK[level] || ['text-slate-600'];
-  return <span className={`text-[13px] font-medium ${text}`}>{level} risk{score != null ? <span className="text-slate-400 font-normal"> · {score}</span> : null}</span>;
-}
+const CheckIcon = ({ result }) => (result === 'Passed' ? <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0" strokeWidth={1.75} />
+  : result === 'Failed' ? <XCircle className="w-4 h-4 text-red-500 shrink-0" strokeWidth={1.75} />
+  : <CircleDashed className="w-4 h-4 text-slate-300 shrink-0" strokeWidth={1.75} />);
 
-export function Verifications({ items, full }) {
-  if (!items?.length) return <Empty icon={ShieldCheck} title="No verifications yet">Verifications appear here once a check has run.</Empty>;
+/** Every run as a row; open one to see its checks. The latest starts open. */
+export function Verifications({ items, full, focus }) {
+  const [open, setOpen] = useState(() => new Set(focus ? [focus] : items?.[0] ? [items[0].ref] : []));
+  if (!items?.length) return <Empty icon={ShieldCheck} title="No verifications yet" />;
+  const toggle = (ref) => setOpen((o) => { const n = new Set(o); if (n.has(ref)) n.delete(ref); else n.add(ref); return n; });
   return (
-    <ol className="space-y-4">
-      {items.map((v) => (
-        <li key={v.ref} className="rounded-xl border border-slate-200 bg-white">
-          <div className="px-5 py-4 flex items-start justify-between gap-4">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="text-[15px] font-semibold text-slate-900">{v.kind}</h3>
+    <div className="divide-y divide-slate-100">
+      {items.map((v) => {
+        const isOpen = open.has(v.ref);
+        return (
+          <div key={v.ref}>
+            <button onClick={() => toggle(v.ref)} className="w-full px-5 h-12 flex items-center gap-3 text-left hover:bg-slate-50">
+              <ChevronRight className={`w-4 h-4 text-slate-400 shrink-0 transition ${isOpen ? 'rotate-90' : ''}`} />
+              <span className="text-[13px] font-medium text-slate-900 truncate">{v.kind}{v.monitoring ? ' (monitoring)' : ''}</span>
+              {full && v.for && <span className="text-[13px] text-slate-500 truncate">for {v.for}</span>}
+              <span className="ml-auto flex items-center gap-3 shrink-0">
+                {v.riskLevel && <span className={`text-[12px] ${RISK_TEXT[v.riskLevel] || 'text-slate-500'}`}>{v.riskLevel}{v.riskScore != null ? ` · ${v.riskScore}` : ''}</span>}
                 <Result value={v.result} />
-                {v.monitoring && <Badge tone="violet">Ongoing monitoring</Badge>}
+                <span className="w-32 text-right text-[12px] text-slate-500">{fmt(v.startedAt)}</span>
+              </span>
+            </button>
+            {isOpen && (
+              <div className="pl-12 pr-5 pb-4 -mt-1">
+                {full && v.workflow && <p className="mb-2 text-[12px] font-mono text-slate-400">{v.workflow}</p>}
+                <ul className="grid sm:grid-cols-2 gap-x-6 gap-y-1.5">
+                  {v.checks.map((c, i) => (
+                    <li key={i} className={`flex items-start gap-2 text-[13px] ${c.result === 'Not done' ? 'text-slate-400' : 'text-slate-700'}`}>
+                      <CheckIcon result={c.result} /><span>{c.check}{c.result === 'Not done' ? ' (not needed)' : ''}</span>
+                    </li>
+                  ))}
+                </ul>
+                {v.issues?.length > 0 && <p className="mt-2 text-[13px] text-amber-700">{v.issues.join(' · ')}</p>}
               </div>
-              <p className="mt-1 text-sm text-slate-500">
-                {fmt(v.startedAt)}
-                {full && v.for ? <> · for <span className="text-slate-700">{v.for}</span></> : null}
-              </p>
-              {full && v.workflow && <p className="mt-0.5 text-xs font-mono text-slate-400">{v.workflow}</p>}
-            </div>
-            <RiskChip level={v.riskLevel} score={full ? v.riskScore : null} />
+            )}
           </div>
-          {v.checks.length > 0 && (
-            <ul className="px-5 py-4 border-t border-slate-100 grid sm:grid-cols-2 gap-x-8 gap-y-2.5">
-              {v.checks.map((c, i) => (
-                <li key={i} className="text-sm text-slate-700 flex items-start gap-2.5">
-                  {c.result === 'Passed' ? <CheckCircle2 className="w-[18px] h-[18px] text-green-600 shrink-0" strokeWidth={1.75} />
-                    : c.result === 'Failed' ? <XCircle className="w-[18px] h-[18px] text-red-500 shrink-0" strokeWidth={1.75} />
-                    : <CircleDashed className="w-[18px] h-[18px] text-slate-400 shrink-0" strokeWidth={1.75} />}
-                  <span>{c.check}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-          {v.issues?.length > 0 && <p className="px-5 pb-4 text-sm text-amber-700">{v.issues.join(' · ')}</p>}
-        </li>
-      ))}
-    </ol>
-  );
-}
-
-export function Risk({ risk, full }) {
-  if (!risk) return <Empty icon={ShieldCheck} title="No risk assessment yet">A risk assessment is made when a verification runs.</Empty>;
-  const [text, bg, border] = RISK[risk.level] || ['text-slate-800', 'bg-slate-50', 'border-slate-200'];
-  return (
-    <div className="grid lg:grid-cols-[260px_1fr] gap-6 items-start">
-      <div className={`rounded-xl border ${border} ${bg} p-5`}>
-        <p className="text-[13px] text-slate-600">Overall risk</p>
-        <p className={`mt-1 text-3xl font-semibold tracking-tight ${text}`}>{risk.level || '—'}</p>
-        {full && risk.score != null && <p className="mt-1 text-sm text-slate-600">Score {risk.score}</p>}
-        <p className="mt-3 text-xs text-slate-500">Assessed {fmt(risk.assessedAt)}</p>
-        {full && risk.entityLevel && <p className="mt-1 text-xs text-slate-500">Record level: {risk.entityLevel}{risk.entityScore != null ? ` (${risk.entityScore})` : ''}</p>}
-      </div>
-      <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
-        <div className="px-5 py-3 border-b border-slate-100 flex justify-between text-[12px] font-medium text-slate-500">
-          <span>Factor</span><span>{full ? 'Value · score' : 'Value'}</span>
-        </div>
-        {risk.factors.length ? (
-          <ul className="divide-y divide-slate-100">
-            {risk.factors.map((f, i) => (
-              <li key={i} className="px-5 py-3 flex items-center justify-between gap-4 text-sm">
-                <span className="text-slate-700">{f.factor}</span>
-                <span className="text-slate-500">{String(f.value).replace(/_/g, ' ').toLowerCase()}{full && f.score != null ? <span className="ml-3 inline-block w-6 text-right text-slate-900 font-medium">{f.score}</span> : null}</span>
-              </li>
-            ))}
-          </ul>
-        ) : <p className="px-5 py-6 text-sm text-slate-500">No factors to show.</p>}
-        {!full && <p className="px-5 py-3 border-t border-slate-100 text-xs text-slate-500">Shown as a level and the factors behind it. Scores stay with the platform.</p>}
-      </div>
+        );
+      })}
     </div>
   );
 }
 
-function Attachment({ path, att }) {
+export function Risk({ risk, full }) {
+  if (!risk) return <Empty icon={ShieldCheck} title="No risk assessment yet" />;
+  return (
+    <div className="px-5 py-5">
+      <div className="flex items-baseline gap-3">
+        <p className={`text-2xl font-semibold tracking-tight ${RISK_TEXT[risk.level] || 'text-slate-900'}`}>{risk.level || '—'} risk</p>
+        <p className="text-[13px] text-slate-500">{risk.score != null ? `Score ${risk.score} · ` : ''}assessed {fmt(risk.assessedAt)}</p>
+      </div>
+      <table className="mt-5 w-full max-w-2xl">
+        <thead><tr className="text-left text-[12px] text-slate-500"><th className="font-medium pb-2">Factor</th><th className="font-medium pb-2">Value</th>{full && <th className="font-medium pb-2 text-right">Score</th>}</tr></thead>
+        <tbody>
+          {risk.factors.map((f, i) => (
+            <tr key={i} className="border-t border-slate-100 text-[13px]">
+              <td className="py-2 text-slate-700">{f.factor}</td>
+              <td className="py-2 text-slate-500">{String(f.value).replace(/_/g, ' ').toLowerCase()}</td>
+              {full && <td className="py-2 text-right text-slate-900">{f.score}</td>}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {!risk.factors.length && <p className="mt-2 text-[13px] text-slate-500">No factors to show.</p>}
+    </div>
+  );
+}
+
+function Thumb({ path, att }) {
   const [url, setUrl] = useState(null);
-  const [error, setError] = useState('');
+  const [failed, setFailed] = useState(false);
   const isImage = String(att.mimeType || '').startsWith('image/');
   useEffect(() => {
     let u;
-    if (isImage) fileUrl(path).then((x) => { u = x; setUrl(x); }).catch((e) => setError(e.message));
+    if (isImage) fileUrl(path).then((x) => { u = x; setUrl(x); }).catch(() => setFailed(true));
     return () => u && URL.revokeObjectURL(u);
   }, [path, isImage]);
-  const open = async () => { try { window.open(url || await fileUrl(path), '_blank', 'noopener'); } catch (e) { setError(e.message); } };
+  const open = async () => { try { window.open(url || await fileUrl(path), '_blank', 'noopener'); } catch { setFailed(true); } };
   return (
-    <button onClick={open} title={att.filename || ''} className="group block w-full text-left">
-      <span className="block aspect-[4/3] rounded-lg overflow-hidden bg-slate-100 ring-1 ring-slate-200 group-hover:ring-slate-400 transition">
-        {isImage
-          ? url ? <img src={url} alt={att.filename || 'Attachment'} className="w-full h-full object-cover" />
-            : <span className="w-full h-full flex items-center justify-center text-slate-400">{error ? <ImageIcon className="w-6 h-6" /> : <Loader2 className="w-5 h-5 animate-spin" />}</span>
-          : <span className="w-full h-full flex items-center justify-center text-slate-400"><FileText className="w-8 h-8" strokeWidth={1.5} /></span>}
-      </span>
-      <span className="block mt-1.5 text-xs text-slate-500 truncate">{att.side ? `${att.side[0]}${att.side.slice(1).toLowerCase()} · ` : ''}{att.filename || att.mimeType}</span>
+    <button onClick={open} title={`${att.side ? `${att.side.toLowerCase()} · ` : ''}${att.filename || 'Open file'}`}
+      className="w-10 h-10 rounded-md overflow-hidden bg-slate-100 ring-1 ring-slate-200 hover:ring-slate-400 flex items-center justify-center text-slate-400 shrink-0">
+      {isImage && url ? <img src={url} alt="" className="w-full h-full object-cover" /> : isImage && !failed ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : isImage ? <ImageIcon className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
     </button>
   );
 }
 
 export function Documents({ items, attachmentPath, full }) {
-  if (!items?.length) return <Empty icon={FolderOpen} title="No documents yet">Documents you add, and photos from an ID check, appear here.</Empty>;
+  if (!items?.length) return <Empty icon={FolderOpen} title="No documents yet" />;
   return (
-    <div className="grid sm:grid-cols-2 gap-4">
+    <div className="divide-y divide-slate-100">
       {items.map((d) => (
-        <div key={d.documentId} className="rounded-xl border border-slate-200 bg-white p-5">
-          <div className="flex items-start gap-3">
-            <span className="w-9 h-9 rounded-lg bg-slate-100 text-slate-500 flex items-center justify-center shrink-0"><FileText className="w-[18px] h-[18px]" strokeWidth={1.75} /></span>
-            <div className="min-w-0">
-              <p className="text-[15px] font-medium text-slate-900">{d.type}</p>
-              <p className="text-sm text-slate-500">
-                {d.number ? <span className="font-mono">{full && d.fullNumber ? d.fullNumber : d.number}</span> : 'No number'}
-                {d.country ? ` · ${d.country}` : ''}
-              </p>
-            </div>
+        <div key={d.documentId} className="px-5 py-3 flex items-center gap-3">
+          <span className="w-8 h-8 rounded-md bg-slate-100 text-slate-500 flex items-center justify-center shrink-0"><FileText className="w-4 h-4" strokeWidth={1.75} /></span>
+          <div className="min-w-0 flex-1">
+            <p className="text-[13px] font-medium text-slate-900">{d.type}{d.number && <span className="ml-2 font-normal font-mono text-slate-500">{full && d.fullNumber ? d.fullNumber : d.number}</span>}</p>
+            <p className="text-[12px] text-slate-500">{fmtDate(d.addedAt)}{full && d.addedBy ? ` · added by ${d.addedBy}` : ''}{d.attachments.length ? '' : ' · details only'}</p>
           </div>
-          <p className="mt-3 text-xs text-slate-500">Added {fmtDate(d.addedAt)}{full && d.addedBy ? ` by ${d.addedBy}` : ''}{d.class ? ` · ${d.class.toLowerCase()}` : ''}</p>
-          {d.attachments.length > 0 ? (
-            <div className="mt-4 grid grid-cols-3 gap-3">
-              {d.attachments.map((a) => <Attachment key={a.attachmentId} att={a} path={attachmentPath(d, a)} />)}
-            </div>
-          ) : <p className="mt-4 text-xs text-slate-400">Details only, no file attached.</p>}
+          <div className="flex gap-1.5">{d.attachments.map((a) => <Thumb key={a.attachmentId} att={a} path={attachmentPath(d, a)} />)}</div>
         </div>
       ))}
     </div>
   );
 }
 
+// FrankieOne's raw audit trail logs every internal step. The platform view shows the key
+// events by default, with everything one click away.
+const ROUTINE = /initiat|evaluating|results ready|enablement|step finished|step completed|entity was updated|workflow started|status was updated|monitoring|toggle|risk has changed|connector service|hosted url|onboarding url/i;
+
+/** A timeline grouped by day. The dot says who acted; the legend says it once. */
 export function History({ items, full }) {
+  const [all, setAll] = useState(false);
   if (!items?.length) return <Empty icon={HistoryIcon} title="Nothing recorded yet" />;
+  const shown = full && !all ? items.filter((e) => !ROUTINE.test(e.text)) : items;
   const days = [];
-  for (const e of items) {
+  for (const e of shown) {
     const day = fmtDate(e.at);
     if (days.at(-1)?.day !== day) days.push({ day, events: [] });
     days.at(-1).events.push(e);
   }
   return (
-    <div className="space-y-8">
+    <div className="px-5 py-4">
+      <div className="mb-4 flex items-center gap-4 text-[12px] text-slate-500">
+        <span className="inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-brand" /> FrankieOne</span>
+        <span className="inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-slate-400" /> Platform</span>
+        {full && (
+          <button onClick={() => setAll(!all)} className="ml-auto text-slate-600 hover:text-slate-900 underline decoration-dotted underline-offset-2">
+            {all ? 'Key events only' : `Show all ${items.length} events`}
+          </button>
+        )}
+      </div>
       {days.map(({ day, events }) => (
-        <div key={day}>
-          <p className="text-[13px] font-medium text-slate-500 mb-3">{day}</p>
-          <ol className="rounded-xl border border-slate-200 bg-white divide-y divide-slate-100">
+        <div key={day} className="mb-5 last:mb-0">
+          <p className="text-[12px] font-medium text-slate-500 mb-1">{day}</p>
+          <ol>
             {events.map((e, i) => (
-              <li key={i} className="px-5 py-3 flex items-start gap-4">
-                <span className="w-16 shrink-0 text-sm text-slate-400 tabular-nums">{fmtTime(e.at)}</span>
-                <span className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${e.source === 'Platform' ? 'bg-slate-400' : 'bg-brand'}`} />
+              <li key={i} className="flex items-start gap-3 py-1.5">
+                <span className={`mt-[7px] w-2 h-2 rounded-full shrink-0 ${e.source === 'Platform' ? 'bg-slate-400' : 'bg-brand'}`} />
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm text-slate-800">{e.text}</p>
-                  {(full && (e.workflow || e.for)) && (
-                    <p className="mt-0.5 text-xs text-slate-500">{e.for ? `For ${e.for}` : ''}{e.for && e.workflow ? ' · ' : ''}{e.workflow ? <span className="font-mono">{e.workflow}</span> : null}</p>
-                  )}
+                  <p className="text-[13px] text-slate-800">{e.who && <span className="text-slate-500">{e.who} · </span>}{e.text}{e.result && e.result !== 'Not checked' && <span className="ml-2"><Result value={e.result} /></span>}</p>
+                  {full && e.for && <p className="text-[12px] text-slate-400">for {e.for}</p>}
                 </div>
-                <span className="shrink-0 flex items-center gap-2">
-                  {e.result && e.result !== 'Not checked' && <Result value={e.result} />}
-                  <span className="text-xs text-slate-400 w-20 text-right">{e.source === 'Platform' ? 'Platform' : 'FrankieOne'}</span>
-                </span>
+                <span className="text-[12px] text-slate-400 tabular-nums shrink-0">{fmtTime(e.at)}</span>
               </li>
             ))}
           </ol>
         </div>
       ))}
     </div>
+  );
+}
+
+/**
+ * The side-panel summary of a record: current risk, the latest workflow's
+ * result, and the earlier runs. Clicking a run opens it in the main column.
+ */
+export function RecordSummary({ file, full, onOpenRun }) {
+  if (!file) return <Panel title="Risk"><p className="text-[13px] text-slate-400">Loading…</p></Panel>;
+  const runs = (file.verifications || []).filter((v) => !v.monitoring);
+  const [latest, ...previous] = runs;
+  const risk = file.risk;
+  return (
+    <>
+      <Panel title="Risk">
+        {risk ? (
+          <div className="flex items-end justify-between gap-3">
+            <div>
+              <p className={`text-[22px] leading-none font-semibold ${RISK_TEXT[risk.level] || 'text-slate-900'}`}>{risk.level}</p>
+              <p className="mt-1.5 text-[12px] text-slate-500">Assessed {fmtDate(risk.assessedAt)}</p>
+            </div>
+            {risk.score != null && (
+              <div className="text-right">
+                <p className="text-[22px] leading-none font-semibold text-slate-900 tabular-nums">{risk.score}</p>
+                <p className="mt-1.5 text-[12px] text-slate-500">Score</p>
+              </div>
+            )}
+          </div>
+        ) : <p className="text-[13px] text-slate-500">Not assessed yet.</p>}
+      </Panel>
+      <Panel title="Latest workflow">
+        {latest ? (
+          <button onClick={() => onOpenRun?.(latest.ref)} className="w-full text-left">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[13px] font-medium text-slate-900 truncate">{latest.kind}</span>
+              <Result value={latest.result} />
+            </div>
+            <p className="mt-1 text-[12px] text-slate-500">{fmtDateTime(latest.startedAt)}{latest.for ? ` · ${full ? 'for ' : ''}${latest.for}` : ''}</p>
+            <ul className="mt-2.5 space-y-1">
+              {latest.checks.filter((c) => c.result !== 'Not done').map((c, i) => (
+                <li key={i} className="flex items-start gap-2 text-[12px] text-slate-600"><CheckIcon result={c.result} /><span>{c.check}</span></li>
+              ))}
+            </ul>
+          </button>
+        ) : <p className="text-[13px] text-slate-500">No workflow has run yet.</p>}
+      </Panel>
+      {previous.length > 0 && (
+        <Panel title="Previous workflows" count={previous.length}>
+          <ul className="-mx-2">
+            {previous.map((v) => (
+              <li key={v.ref}>
+                <button onClick={() => onOpenRun?.(v.ref)} className="w-full px-2 py-1.5 rounded-md flex items-center gap-2 text-left hover:bg-slate-50">
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[13px] text-slate-800 truncate">{v.kind}</span>
+                    <span className="block text-[12px] text-slate-500 truncate">{fmtDate(v.startedAt)}{v.for ? ` · ${v.for}` : ''}</span>
+                  </span>
+                  <Result value={v.result} />
+                </button>
+              </li>
+            ))}
+          </ul>
+        </Panel>
+      )}
+    </>
   );
 }
 
@@ -203,7 +249,8 @@ const readBase64 = (file) => new Promise((resolve, reject) => {
   r.readAsDataURL(file);
 });
 
-export function UploadDocument({ defaultType = 'OTHER', onUpload }) {
+/** Upload form, sized for a dropdown or a task. */
+export function UploadDocument({ defaultType = 'OTHER', onUpload, onDone }) {
   const [type, setType] = useState(defaultType);
   const [file, setFile] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -214,68 +261,55 @@ export function UploadDocument({ defaultType = 'OTHER', onUpload }) {
       if (file && file.size > 6 * 1024 * 1024) throw new Error('Files can be up to 6 MB.');
       await onUpload({ type, file: file ? { filename: file.name, mimeType: file.type || 'application/octet-stream', base64: await readBase64(file) } : undefined });
       setFile(null);
+      onDone?.();
     } catch (e) { setError(e.message); } finally { setBusy(false); }
   };
   return (
-    <div className="h-full rounded-xl border border-slate-200 bg-white p-5 flex flex-col">
-      <div className="flex items-start gap-3">
-        <span className="w-9 h-9 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center shrink-0"><Upload className="w-[18px] h-[18px]" strokeWidth={1.75} /></span>
-        <div>
-          <p className="text-[15px] font-medium text-slate-900">Add a document</p>
-          <p className="text-sm text-slate-500">Stored on the client's record, alongside their verification.</p>
-        </div>
-      </div>
-      <div className="mt-auto pt-4 space-y-3">
-        <select value={type} onChange={(e) => setType(e.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm">
-          {DOC_TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-        </select>
-        <label className="flex items-center gap-3 rounded-lg border border-dashed border-slate-300 px-3 py-2.5 text-sm text-slate-500 cursor-pointer hover:border-slate-400">
-          <FileText className="w-4 h-4 shrink-0" />
-          <span className="truncate flex-1">{file ? file.name : 'Choose a photo or PDF (optional)'}</span>
-          <input type="file" accept="image/*,application/pdf" onChange={(e) => setFile(e.target.files?.[0] || null)} className="sr-only" />
-        </label>
-        <button onClick={submit} disabled={busy} className={`${btn.primary} w-full`}>
-          {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />} Add to file
-        </button>
-      </div>
-      {error && <p className="mt-2 text-sm text-red-700">{error}</p>}
+    <div className="space-y-2">
+      <select value={type} onChange={(e) => setType(e.target.value)} className={input}>
+        {DOC_TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+      </select>
+      <label className="flex items-center gap-2 h-9 rounded-md border border-dashed border-slate-300 px-3 text-[13px] text-slate-500 cursor-pointer hover:border-slate-400">
+        <FileText className="w-4 h-4 shrink-0" />
+        <span className="truncate">{file ? file.name : 'Choose a photo or PDF'}</span>
+        <input type="file" accept="image/*,application/pdf" onChange={(e) => setFile(e.target.files?.[0] || null)} className="sr-only" />
+      </label>
+      <button onClick={submit} disabled={busy} className={`${btn.primary} w-full`}>
+        {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />} Upload
+      </button>
+      {error && <p className="text-[12px] text-red-700">{error}</p>}
     </div>
   );
 }
 
+/** One-time hosted ID check link (document photo and selfie). */
 export function IdvLink({ who, onCreate }) {
   const [link, setLink] = useState(null);
-  const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [error, setError] = useState('');
   const create = async () => {
     setBusy(true); setError('');
     try { setLink(await onCreate()); } catch (e) { setError(e.message); } finally { setBusy(false); }
   };
   return (
-    <div className="h-full rounded-xl border border-slate-200 bg-white p-5 flex flex-col">
-      <div className="flex items-start gap-3">
-        <span className="w-9 h-9 rounded-lg bg-blue-50 text-brand flex items-center justify-center shrink-0"><Smartphone className="w-[18px] h-[18px]" strokeWidth={1.75} /></span>
-        <div>
-          <p className="text-[15px] font-medium text-slate-900">ID check by phone</p>
-          <p className="text-sm text-slate-500">A one-time link for {who} to photograph their ID and take a selfie. Photos and results land in this file.</p>
-        </div>
-      </div>
+    <div className="space-y-2">
+      <p className="text-[13px] text-slate-600">A one-time link for {who} to photograph their ID and take a selfie on their phone.</p>
       {!link ? (
-        <button onClick={create} disabled={busy} className={`${btn.secondary} w-full mt-auto`}>
-          {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Smartphone className="w-4 h-4" />} Create link
+        <button onClick={create} disabled={busy} className={`${btn.primary} w-full`}>
+          {busy && <Loader2 className="w-4 h-4 animate-spin" />} Create link
         </button>
       ) : (
-        <div className="mt-auto pt-4">
-          <div className="flex items-center gap-2">
-            <input readOnly value={link.url} className="flex-1 min-w-0 text-xs font-mono rounded-lg border border-slate-200 bg-slate-50 px-3 py-2" />
+        <>
+          <div className="flex items-center gap-1.5">
+            <input readOnly value={link.url} className={`${input} font-mono text-[12px] bg-slate-50`} />
             <button onClick={() => { navigator.clipboard?.writeText(link.url); setCopied(true); }} title="Copy link" className={btn.secondary}>{copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}</button>
             <a href={link.url} target="_blank" rel="noreferrer" title="Open link" className={btn.secondary}><ExternalLink className="w-4 h-4" /></a>
           </div>
-          {link.expiresAt && <p className="mt-2 text-xs text-slate-500">Expires {fmt(link.expiresAt)}. Check status once they've finished.</p>}
-        </div>
+          {link.expiresAt && <p className="text-[12px] text-slate-500">Expires {fmt(link.expiresAt)}.</p>}
+        </>
       )}
-      {error && <p className="mt-2 text-sm text-red-700">{error}</p>}
+      {error && <p className="text-[12px] text-red-700">{error}</p>}
     </div>
   );
 }

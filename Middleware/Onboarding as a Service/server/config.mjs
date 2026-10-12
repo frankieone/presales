@@ -64,6 +64,8 @@ export const POLICY = {
   // set aside automatically. On a dedicated account, set this to false: every
   // record is the platform's, so every match is a candidate.
   sharedDemoAccount: setting('SHARED_DEMO_ACCOUNT', 'true') !== 'false',
+  // Whether an intermediary sees the risk score from its own verifications, or the level only.
+  shareRiskScore: setting('SHARE_RISK_SCORE', 'true') !== 'false',
 };
 
 /**

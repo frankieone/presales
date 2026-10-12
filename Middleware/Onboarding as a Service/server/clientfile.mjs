@@ -19,7 +19,7 @@
  *                     record, with each run and event attributed to the
  *                     intermediary it was for.
  */
-import { DUPLICATE_WORKFLOW, IDV_FLOW, byId } from './config.mjs';
+import { DUPLICATE_WORKFLOW, IDV_FLOW, POLICY, byId } from './config.mjs';
 import * as frankie from './frankie.mjs';
 import { store } from './store.mjs';
 import { ClientError } from './tier1.mjs';
@@ -51,6 +51,7 @@ const band = (level) => {
   const l = String(level || '').toUpperCase();
   return l.startsWith('UNACC') ? 'Unacceptable' : l === 'HIGH' ? 'High' : l === 'MEDIUM' ? 'Medium' : l === 'LOW' ? 'Low' : l ? l[0] + l.slice(1).toLowerCase() : null;
 };
+const STATUS_TEXT = { VERIFIED: 'Verified', IN_REVIEW: 'In review', ACTION_REQUIRED: 'Action required', DECLINED: 'Declined' };
 const last4 = (s) => (s ? String(s).slice(-4) : '');
 const workflowKind = (name) => (name === DUPLICATE_WORKFLOW ? 'Duplicate check'
   : /organi[sz]ation/i.test(name || '') ? 'Business register check'
@@ -79,18 +80,16 @@ const auditText = (e) => {
 // The audit trail records every internal step (initiated, evaluating, results ready). An
 // intermediary's history keeps what a reviewer cares about: each check's result, status and
 // risk changes, and anything a person did.
-const NOISE = /initiat|evaluating|results ready|enablement|step finished|entity was updated/i;
+const NOISE = /initiat|evaluating|results ready|enablement|step finished|entity was updated|workflow started/i;
 function keyEvents(events) {
   const seen = new Set();
   const out = [];
   for (const e of events) {
     if (NOISE.test(e.description || '')) continue;
+    // The run's completion, status and risk changes repeat what the checks and the outcome already say.
+    if (['WORKFLOW_COMPLETE', 'WORKFLOW_STATUS_CHANGE', 'WORKFLOW_RISK_CHANGE'].includes(e.type)) continue;
     const step = CHECKS[e.stepName];
-    const text = e.type === 'WORKFLOW_COMPLETE' ? 'Verification completed'
-      : e.type === 'WORKFLOW_STATUS_CHANGE' ? 'Verification outcome recorded'
-      : e.type === 'WORKFLOW_RISK_CHANGE' ? 'Risk assessed'
-      : step ? step
-      : e.description;
+    const text = step || e.description;
     const key = `${e.workflowExecutionId}|${text}`;
     if (!text || seen.has(key)) continue;
     seen.add(key);
@@ -147,7 +146,7 @@ const verification = (w, scores) => ({
   result: RESULT[w.status] || w.status || 'In progress',
   monitoring: w.lifecyclePhase === 'MONITORING',
   riskLevel: band(w.risk?.level),
-  ...(scores ? { riskScore: w.risk?.overallScore } : {}),
+  ...(scores || POLICY.shareRiskScore ? { riskScore: w.risk?.overallScore } : {}),
   checks: checks(w),
   issues: (w.issues || []).map((i) => i.description || i.category || i.issue).filter(Boolean),
 });
@@ -158,7 +157,8 @@ function riskFrom(runs, ra, keep, scores) {
   if (!latest && !ra) return null;
   return {
     level: band(latest?.risk?.level || ra?.workflowRiskLevel),
-    ...(scores ? { score: latest?.risk?.overallScore, entityLevel: band(ra?.riskLevel), entityScore: ra?.riskScore } : {}),
+    ...(scores || POLICY.shareRiskScore ? { score: latest?.risk?.overallScore } : {}),
+    ...(scores ? { entityLevel: band(ra?.riskLevel), entityScore: ra?.riskScore } : {}),
     assessedAt: latest?.endedAt || ra?.updatedAt,
     factors: (ra?.riskFactors || []).filter((f) => f.status !== 'OVERRIDDEN' && keep(f)).map((f) => ({
       factor: f.description || f.factor, value: f.value, ...(scores ? { score: f.score, status: f.status } : {}),
@@ -181,7 +181,7 @@ function documentView(d, scores) {
 // ── what the platform did, for one relationship ─────────────────────
 function platformEvents(rel) {
   const out = [{ at: rel.createdAt, source: 'Platform', text: rel.kind === 'business' ? 'Business submitted for verification' : rel.kind === 'related' ? `Submitted as ${String(rel.roleLabel || 'person').toLowerCase()} of a business client` : 'Submitted for verification' }];
-  if (rel.completedAt) out.push({ at: rel.completedAt, source: 'Platform', text: `Outcome: ${String(rel.status || '').replace(/_/g, ' ').toLowerCase()}` });
+  if (rel.completedAt) out.push({ at: rel.completedAt, source: 'Platform', text: `Status set to ${STATUS_TEXT[rel.status] || rel.status}` });
   for (const u of rel.uploads || []) out.push({ at: u.at, source: 'Platform', text: `Document added: ${u.label}` });
   for (const q of rel.idvRequests || []) out.push({ at: q.at, source: 'Platform', text: 'ID verification link sent to the client' });
   return out;

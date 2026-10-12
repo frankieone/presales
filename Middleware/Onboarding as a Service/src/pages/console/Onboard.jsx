@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { Link, useNavigate, useOutletContext } from 'react-router-dom';
-import { ArrowLeft, Building2, Loader2, Plus, Sparkles, Trash2, User, UserPlus } from 'lucide-react';
+import { useNavigate, useOutletContext } from 'react-router-dom';
+import { Building2, Loader2, Plus, Sparkles, Trash2, User } from 'lucide-react';
 import { submitClient } from '../../api';
-import { Card, Field, btn, input } from '../../components/ui';
+import { Field, TopBar, btn, input } from '../../components/ui';
 
 const STATES = ['ACT', 'NSW', 'NT', 'QLD', 'SA', 'TAS', 'VIC', 'WA'];
 const EMPTY_PERSON = {
@@ -47,17 +47,17 @@ const setIn = (obj, path, v) => {
   return next;
 };
 
-const Sub = ({ children }) => <h3 className="text-[13px] font-semibold text-slate-900 mb-3">{children}</h3>;
+const Sub = ({ children }) => <h3 className="text-[12px] font-semibold text-slate-500 mb-2.5">{children}</h3>;
 
 /** Name, date of birth, address, identity document and contact for one person. */
 function PersonFields({ p, onChange, contact = true }) {
   const set = (path) => (e) => onChange(setIn(p, path, e.target.value));
   const doc = p.document;
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <div>
         <Sub>Name and date of birth</Sub>
-        <div className="grid sm:grid-cols-6 gap-4">
+        <div className="grid sm:grid-cols-6 gap-3">
           <Field label="Given name" span={2}><input className={input} value={p.givenName} onChange={set('givenName')} /></Field>
           <Field label="Middle name" span={2}><input className={input} value={p.middleName} onChange={set('middleName')} /></Field>
           <Field label="Family name" span={2}><input className={input} value={p.familyName} onChange={set('familyName')} /></Field>
@@ -66,7 +66,7 @@ function PersonFields({ p, onChange, contact = true }) {
       </div>
       <div>
         <Sub>Residential address</Sub>
-        <div className="grid sm:grid-cols-6 gap-4">
+        <div className="grid sm:grid-cols-6 gap-3">
           <Field label="Unit"><input className={input} value={p.address.unitNumber} onChange={set('address.unitNumber')} /></Field>
           <Field label="Number"><input className={input} value={p.address.streetNumber} onChange={set('address.streetNumber')} /></Field>
           <Field label="Street name" span={3}><input className={input} value={p.address.streetName} onChange={set('address.streetName')} /></Field>
@@ -80,7 +80,7 @@ function PersonFields({ p, onChange, contact = true }) {
       </div>
       <div>
         <Sub>Identity document</Sub>
-        <div className="grid sm:grid-cols-6 gap-4">
+        <div className="grid sm:grid-cols-6 gap-3">
           <Field label="Document" span={2}>
             <select className={input} value={doc.type} onChange={set('document.type')}>
               <option value="DRIVERS_LICENSE">Driver licence</option>
@@ -109,7 +109,7 @@ function PersonFields({ p, onChange, contact = true }) {
       {contact && (
         <div>
           <Sub>Contact <span className="font-normal text-slate-500">(optional)</span></Sub>
-          <div className="grid sm:grid-cols-6 gap-4">
+          <div className="grid sm:grid-cols-6 gap-3">
             <Field label="Email" span={3}><input type="email" className={input} value={p.email} onChange={set('email')} /></Field>
             <Field label="Mobile" span={3}><input className={input} value={p.phone} onChange={set('phone')} /></Field>
           </div>
@@ -119,15 +119,28 @@ function PersonFields({ p, onChange, contact = true }) {
   );
 }
 
-function KindOption({ active, icon: Icon, title, text, onClick, colour }) {
+function Segmented({ value, onChange, options }) {
   return (
-    <button onClick={onClick} className={`text-left rounded-2xl border-2 p-5 transition ${active ? 'bg-white' : 'bg-white/60 border-slate-200 hover:border-slate-300'}`} style={active ? { borderColor: colour } : {}}>
-      <Icon className="w-6 h-6" style={{ color: active ? colour : '#94a3b8' }} strokeWidth={1.75} />
-      <p className="mt-3 text-[15px] font-semibold text-slate-900">{title}</p>
-      <p className="mt-0.5 text-sm text-slate-500">{text}</p>
-    </button>
+    <div className="inline-flex p-0.5 rounded-lg bg-slate-100">
+      {options.map(([k, label, Icon]) => (
+        <button key={k} onClick={() => onChange(k)}
+          className={`h-8 px-3.5 rounded-md text-[13px] inline-flex items-center gap-1.5 ${value === k ? 'bg-white text-slate-900 font-medium shadow-sm' : 'text-slate-500 hover:text-slate-900'}`}>
+          <Icon className="w-4 h-4" strokeWidth={1.75} />{label}
+        </button>
+      ))}
+    </div>
   );
 }
+
+const Section = ({ title, actions, children }) => (
+  <section className="py-6 border-b border-slate-200 last:border-b-0">
+    <div className="mb-4 flex items-center justify-between gap-3">
+      <h2 className="text-[14px] font-semibold text-slate-900">{title}</h2>
+      {actions && <div className="flex items-center gap-2">{actions}</div>}
+    </div>
+    {children}
+  </section>
+);
 
 /**
  * Onboarding a client. The details go to the platform, never to FrankieOne;
@@ -192,36 +205,31 @@ export default function Onboard() {
   const wait = Math.round((kind === 'BUSINESS' ? 25000 : demo.minResponseMs || 10000) / 1000);
   return (
     <>
-      <Link to="/console" className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800"><ArrowLeft className="w-4 h-4" /> Clients</Link>
-      <div className="mt-5 mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4">
-        <div>
-          <h1 className="text-[28px] leading-tight font-semibold tracking-tight text-slate-900">Onboard a client</h1>
-          <p className="mt-2 text-[15px] text-slate-500">Sent to {im.platform} for verification. You get back a status, not the checks.</p>
-        </div>
-        <label className="flex items-center gap-2 rounded-xl border border-dashed border-slate-300 bg-white px-3 py-2 text-sm md:w-[420px]">
+      <TopBar crumbs={[{ label: 'Clients', to: '/console' }, { label: 'New client' }]} actions={
+        <label className="flex items-center gap-2 h-8 rounded-md border border-dashed border-slate-300 px-2.5 text-[13px]">
           <Sparkles className="w-4 h-4 text-slate-400 shrink-0" />
-          <select value="" onChange={(e) => fill(e.target.value)} className="flex-1 min-w-0 bg-transparent text-slate-600 focus:outline-none">
-            <option value="">Demo: fill with FrankieOne test details…</option>
+          <select value="" onChange={(e) => fill(e.target.value)} className="bg-transparent text-slate-600 focus:outline-none max-w-[16rem]">
+            <option value="">Demo: fill with test details…</option>
             <optgroup label="Individuals">{people.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}</optgroup>
             <optgroup label="Businesses">{DEMO_BUSINESSES.map((x) => <option key={x.id} value={`biz:${x.id}`}>{x.label}</option>)}</optgroup>
           </select>
         </label>
-      </div>
-
-      <div className="grid xl:grid-cols-[1fr_320px] gap-8 items-start">
-        <div className="space-y-6 min-w-0">
-          <div className="grid sm:grid-cols-2 gap-4">
-            <KindOption active={kind === 'INDIVIDUAL'} onClick={() => setKind('INDIVIDUAL')} icon={User} colour={im.colour} title="An individual" text="A person, verified with their ID document." />
-            <KindOption active={kind === 'BUSINESS'} onClick={() => setKind('BUSINESS')} icon={Building2} colour={im.colour} title="A business" text="A company, trust or partnership, and the people behind it." />
+      } />
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        <div className="max-w-3xl mx-auto px-6 pt-6 pb-10">
+          <h1 className="text-[20px] font-semibold text-slate-900">New client</h1>
+          <p className="mt-1 text-[13px] text-slate-500">Sent to {im.platform} for verification. Takes about {wait} seconds.</p>
+          <div className="mt-5">
+            <Segmented value={kind} onChange={setKind} options={[['INDIVIDUAL', 'Individual', User], ['BUSINESS', 'Business', Building2]]} />
           </div>
 
           {kind === 'INDIVIDUAL' ? (
-            <Card title="Client details"><PersonFields p={p} onChange={setP} /></Card>
+            <Section title="Client"><PersonFields p={p} onChange={setP} /></Section>
           ) : (
             <>
-              <Card title="Business details">
-                <div className="space-y-8">
-                  <div className="grid sm:grid-cols-6 gap-4">
+              <Section title="Business">
+                <div className="space-y-6">
+                  <div className="grid sm:grid-cols-6 gap-3">
                     <Field label="Legal name" span={4}><input className={input} value={biz.legalName} onChange={setB('legalName')} /></Field>
                     <Field label="Type" span={2}>
                       <select className={input} value={biz.type} onChange={(e) => {
@@ -229,13 +237,13 @@ export default function Onboard() {
                         setMembers(members.map((m) => ({ ...m, role: DEFAULT_ROLE[e.target.value] })));
                       }}>{BUSINESS_TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
                     </Field>
-                    <Field label="Trading name" span={2} hint="Optional"><input className={input} value={biz.tradingName} onChange={setB('tradingName')} /></Field>
-                    <Field label="ABN" span={2} hint="If it has one"><input className={input} value={biz.abn} onChange={setB('abn')} /></Field>
-                    <Field label="ACN" span={2} hint="If it has one"><input className={input} value={biz.acn} onChange={setB('acn')} /></Field>
+                    <Field label="Trading name (optional)" span={2}><input className={input} value={biz.tradingName} onChange={setB('tradingName')} /></Field>
+                    <Field label="ABN (if any)" span={2}><input className={input} value={biz.abn} onChange={setB('abn')} /></Field>
+                    <Field label="ACN (if any)" span={2}><input className={input} value={biz.acn} onChange={setB('acn')} /></Field>
                   </div>
                   <div>
                     <Sub>Business address</Sub>
-                    <div className="grid sm:grid-cols-6 gap-4">
+                    <div className="grid sm:grid-cols-6 gap-3">
                       <Field label="Number"><input className={input} value={biz.address.streetNumber} onChange={setB('address.streetNumber')} /></Field>
                       <Field label="Street name" span={3}><input className={input} value={biz.address.streetName} onChange={setB('address.streetName')} /></Field>
                       <Field label="Type" span={2}><input className={input} value={biz.address.streetType} onChange={setB('address.streetType')} placeholder="Street" /></Field>
@@ -246,70 +254,51 @@ export default function Onboard() {
                       <Field label="Postcode" span={2}><input className={input} value={biz.address.postalCode} onChange={setB('address.postalCode')} /></Field>
                     </div>
                   </div>
-                  <p className="text-sm text-slate-500">Many trusts and partnerships have neither an ABN nor an ACN. Without one there's no register to check, so you'll be asked for the document that establishes the business.</p>
+                  <p className="text-[12px] text-slate-500">No ABN or ACN? You'll be asked for the trust deed or partnership agreement instead.</p>
                 </div>
-              </Card>
+              </Section>
 
               {members.map((m, i) => (
-                <Card key={i}
-                  title={`Person ${i + 1}`}
-                  description="Each person is verified and linked to the business in their role."
-                  actions={<>
-                    <select className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm" value={m.role} onChange={(e) => setMember(i, { role: e.target.value })}>
-                      {ROLE_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                    </select>
-                    <select className="rounded-lg border border-dashed border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-500 max-w-[11rem]" value="" onChange={(e) => e.target.value && setMember(i, { person: fromTest(testPerson(e.target.value)) })}>
-                      <option value="">Demo: fill…</option>
-                      {people.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
-                    </select>
-                    {members.length > 1 && <button onClick={() => setMembers(members.filter((_, j) => j !== i))} title="Remove person" className={btn.ghost}><Trash2 className="w-4 h-4" /></button>}
-                  </>}>
+                <Section key={i} title={`Person ${i + 1}`} actions={<>
+                  <select className="h-8 rounded-md border border-slate-200 bg-white px-2 text-[13px]" value={m.role} onChange={(e) => setMember(i, { role: e.target.value })}>
+                    {ROLE_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                  </select>
+                  <select className="h-8 rounded-md border border-dashed border-slate-300 bg-white px-2 text-[13px] text-slate-500 max-w-[10rem]" value="" onChange={(e) => e.target.value && setMember(i, { person: fromTest(testPerson(e.target.value)) })}>
+                    <option value="">Demo: fill…</option>
+                    {people.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
+                  </select>
+                  {members.length > 1 && <button onClick={() => setMembers(members.filter((_, j) => j !== i))} title="Remove person" className={btn.ghost}><Trash2 className="w-4 h-4" /></button>}
+                </>}>
                   <PersonFields contact={false} p={m.person} onChange={(np) => setMember(i, { person: np })} />
-                </Card>
+                </Section>
               ))}
-              <button onClick={() => setMembers([...members, { role: DEFAULT_ROLE[biz.type], person: EMPTY_PERSON }])}
-                className="w-full rounded-2xl border-2 border-dashed border-slate-300 py-4 text-sm font-medium text-slate-600 hover:border-slate-400 hover:text-slate-900 inline-flex items-center justify-center gap-2">
-                <Plus className="w-4 h-4" /> Add a director, trustee, partner or owner
-              </button>
+              <div className="pt-4">
+                <button onClick={() => setMembers([...members, { role: DEFAULT_ROLE[biz.type], person: EMPTY_PERSON }])} className={btn.secondary}>
+                  <Plus className="w-4 h-4" /> Add a person
+                </button>
+              </div>
             </>
           )}
         </div>
+      </div>
 
-        <aside className="space-y-6 xl:sticky xl:top-10">
-          <Card title="Submit">
-            <div className="space-y-5">
-              <Field label="Your client reference" hint="Your own ID for this client. It's how you'll find them.">
-                <input className={`${input} font-mono`} value={clientRef} onChange={(e) => setClientRef(e.target.value)} />
-              </Field>
-              <label className="flex items-start gap-3 text-sm text-slate-700">
-                <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-0.5 w-4 h-4 rounded border-slate-300" />
-                {kind === 'INDIVIDUAL' ? 'The client has consented to their identity being verified.' : 'Each person has consented to their identity being verified.'}
-              </label>
-              <button onClick={submit} disabled={busy || !ready} className={`${btn.primary} w-full py-2.5`} style={{ background: im.colour }}>
-                {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
-                {busy ? `Verifying… about ${wait} seconds` : 'Submit for verification'}
-              </button>
-              {error && <p className="text-sm text-red-700">{error}</p>}
-            </div>
-          </Card>
-          <Card title="What happens next">
-            <ol className="space-y-4 text-sm text-slate-600">
-              {[
-                `The details go to ${im.platform}. You never connect to FrankieOne.`,
-                kind === 'INDIVIDUAL'
-                  ? `${im.platform} verifies their identity and screens them, using the checks set for ${im.name}.`
-                  : `${im.platform} records the business, checks the register if there's an ABN or ACN, and verifies each person.`,
-                'You get back a status, a risk band and anything you need to do.',
-              ].map((t, i) => (
-                <li key={i} className="flex gap-3">
-                  <span className="w-6 h-6 rounded-full bg-slate-100 text-slate-600 text-xs font-semibold flex items-center justify-center shrink-0">{i + 1}</span>
-                  <span className="pt-0.5">{t}</span>
-                </li>
-              ))}
-            </ol>
-            <p className="mt-5 text-xs text-slate-500">Takes about {wait} seconds, whoever the client is.</p>
-          </Card>
-        </aside>
+      <div className="shrink-0 border-t border-slate-200 bg-white">
+        <div className="max-w-3xl mx-auto px-6 py-3 flex flex-col sm:flex-row sm:items-center gap-3">
+          <label className="flex items-center gap-2 text-[13px] text-slate-600">
+            Reference
+            <input className="h-8 w-28 rounded-md border border-slate-200 px-2 font-mono text-[13px]" value={clientRef} onChange={(e) => setClientRef(e.target.value)} />
+          </label>
+          <label className="flex items-center gap-2 text-[13px] text-slate-700 sm:ml-2">
+            <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="w-4 h-4 rounded border-slate-300" />
+            {kind === 'INDIVIDUAL' ? 'Client has consented' : 'Each person has consented'}
+          </label>
+          <div className="sm:ml-auto flex items-center gap-3">
+            {error && <span className="text-[13px] text-red-700">{error}</span>}
+            <button onClick={submit} disabled={busy || !ready} className={btn.primary}>
+              {busy && <Loader2 className="w-4 h-4 animate-spin" />}{busy ? 'Verifying…' : 'Submit for verification'}
+            </button>
+          </div>
+        </div>
       </div>
     </>
   );

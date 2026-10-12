@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
-import { Building2, LogOut, UserPlus, Users } from 'lucide-react';
+import { LogOut, UserPlus, Users } from 'lucide-react';
 import { demoPeople, getSession, listClients, me, setSession } from '../../api';
 import { Shell, SideButton } from '../../components/ui';
 
@@ -25,29 +25,28 @@ export default function ConsoleLayout({ demo }) {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!im) return null;
-  const brand = (
-    <div className="flex items-center gap-3">
-      <span className="w-10 h-10 rounded-xl flex items-center justify-center text-white shrink-0" style={{ background: im.colour }}>
-        <Building2 className="w-5 h-5" />
-      </span>
-      <div className="min-w-0">
-        <p className="font-semibold text-slate-900 truncate">{im.name}</p>
-        <p className="text-xs text-slate-500">Client onboarding</p>
-      </div>
-    </div>
-  );
-  const footer = (
+  const needAction = (clients || []).filter((c) => c.status === 'ACTION_REQUIRED').length;
+  const brand = (collapsed) => (
     <>
-      <p className="px-3 pb-3 text-xs text-slate-400">Powered by {im.platform}</p>
-      <SideButton icon={LogOut} onClick={() => { setSession(null); navigate('/'); }}>Sign out</SideButton>
+      <span className="w-7 h-7 rounded-md flex items-center justify-center text-white text-[12px] font-semibold shrink-0" style={{ background: im.colour }}>
+        {im.name.split(' ').map((w) => w[0]).join('').slice(0, 2)}
+      </span>
+      {!collapsed && (
+        <div className="min-w-0">
+          <p className="text-[13px] font-semibold text-slate-900 truncate">{im.name}</p>
+          <p className="text-[11px] text-slate-500 truncate">via {im.platform}</p>
+        </div>
+      )}
     </>
   );
   return (
-    <Shell brand={brand} footer={footer} nav={[
-      { to: '/console', label: 'Clients', icon: Users, end: true },
-      { to: '/console/onboard', label: 'Onboard a client', icon: UserPlus },
-    ]}>
-      {error && <p className="mb-4 text-sm text-red-700">{error}</p>}
+    <Shell brand={brand}
+      footer={(collapsed) => <SideButton collapsed={collapsed} icon={LogOut} onClick={() => { setSession(null); navigate('/'); }}>Sign out</SideButton>}
+      nav={[
+        { to: '/console', label: 'Clients', icon: Users, end: true, badge: needAction || null },
+        { to: '/console/onboard', label: 'New client', icon: UserPlus },
+      ]}>
+      {error && <p className="px-5 pt-3 text-[13px] text-red-700">{error}</p>}
       <Outlet context={{ im, clients, reload, people, demo }} />
     </Shell>
   );
