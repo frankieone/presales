@@ -411,3 +411,62 @@ export async function addPlatformComment(entityId, text) {
   const r = await frankie.addComment(entityId, rel.kind === 'business' ? 'ORGANIZATION' : 'INDIVIDUAL', String(text).trim().slice(0, 2000), 'platform', 'Platform compliance');
   return { commentId: r.comment?.commentId };
 }
+
+// ── duplicate decisions: both records, side by side ─────────────────
+const fmtAddress = (a) => (a ? [
+  [a.unitNumber && `${a.unitNumber.replace(/^U\s*/i, 'Unit ')},`, a.streetNumber, a.streetName, a.streetType].filter(Boolean).join(' '),
+  [a.locality, a.subdivision, a.postalCode].filter(Boolean).join(' '),
+].filter(Boolean).join(', ') : null);
+
+function identityDoc(d) {
+  const sup = d.supplementaryData || {};
+  const type = d.type || sup.type;
+  return {
+    documentId: d.documentId,
+    type: DOC_TYPE[type] || (type || 'Document').replace(/_/g, ' ').toLowerCase(),
+    number: d.primaryIdentifier || null,
+    cardNumber: d.secondaryIdentifier || null,
+    state: d.subdivision || null,
+    country: d.country || null,
+    expiry: d.expiryDate?.normalized || null,
+    ...(type === 'NATIONAL_HEALTH_ID' ? { colour: { G: 'Green', B: 'Blue', Y: 'Yellow' }[d.subtype] || d.subtype, position: sup.reference, nameOnCard: sup.nameOnCardLine1 } : {}),
+    addedAt: d.createdAt,
+    attachments: (d.attachments || []).map((a) => ({ attachmentId: a.attachmentId, filename: a.filename, mimeType: a.mimeType, side: a.side || null })),
+  };
+}
+
+/** One person's record, as compliance needs it to decide whether two records are the same person. */
+async function personProfile(entityId) {
+  const [rec, docs, sp] = await Promise.all([
+    frankie.getIndividual(entityId).catch(() => ({})),
+    frankie.listDocuments(entityId).catch(() => ({})),
+    frankie.getServiceProfile(entityId).catch(() => ({})),
+  ]);
+  const i = rec.individual || {};
+  const rels = relsOn(entityId);
+  const runs = (sp.serviceProfile?.workflowSummaries || []).filter((w) => w.workflowName !== DUPLICATE_WORKFLOW && w.lifecyclePhase !== 'MONITORING')
+    .sort((a, b) => Date.parse(b.startedAt || 0) - Date.parse(a.startedAt || 0));
+  const allDocs = Object.entries(docs).filter(([k, v]) => Array.isArray(v) && k !== 'requestId').flatMap(([, v]) => v);
+  return {
+    entityId,
+    name: i.name?.displayName || [i.name?.givenName, i.name?.middleName, i.name?.familyName].filter(Boolean).join(' '),
+    dateOfBirth: i.dateOfBirth?.normalized || null,
+    address: fmtAddress((i.addresses || []).find((a) => a.status === 'CURRENT') || i.addresses?.[0]),
+    email: i.emailAddresses?.[0]?.email || null,
+    phone: i.phoneNumbers?.[0]?.number || null,
+    recordCreated: i.createdAt || null,
+    firstOnboarded: rels.map((r) => r.createdAt).sort()[0] || i.createdAt || null,
+    heldBy: rels.filter((r) => !r.removedAt).map((r) => ({ intermediary: byId[r.intermediaryId]?.name, clientRef: r.clientRef, since: r.createdAt, role: r.roleLabel || null })),
+    documents: allDocs.filter((d) => d.class === 'IDENTITY' || d.primaryIdentifier || d.attachments?.length).map(identityDoc),
+    latestRun: runs[0] ? { workflow: runs[0].workflowName, result: RESULT[runs[0].status] || runs[0].status, at: runs[0].endedAt || runs[0].startedAt, risk: band(runs[0].riskAssessment?.workflowRiskLevel) } : null,
+  };
+}
+
+/** A held duplicate, with the full record on each side. */
+export async function reviewComparison(reviewId) {
+  const review = store.review(reviewId);
+  if (!review) throw new ClientError(404, 'NOT_FOUND', 'No such review.');
+  if (review.kind === 'business') return { kind: 'business', sides: null };
+  const [submitted, ...candidates] = await Promise.all([review.newEntityId, ...review.candidates.map((c) => c.entityId)].map(personProfile));
+  return { kind: 'person', submitted, candidates };
+}

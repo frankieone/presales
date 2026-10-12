@@ -312,8 +312,8 @@ export function Badge({ children, tone = 'slate' }) {
 }
 
 export const btn = {
-  primary: 'inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-md text-[13px] font-medium text-[color:var(--brand-fg)] bg-brand hover:bg-brand/90 disabled:opacity-40 transition',
-  secondary: 'inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-md text-[13px] font-medium text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 disabled:opacity-40 transition',
+  primary: 'inline-flex items-center justify-center gap-1.5 whitespace-nowrap h-8 px-3 rounded-md text-[13px] font-medium text-[color:var(--brand-fg)] bg-brand hover:bg-brand/90 disabled:opacity-40 transition',
+  secondary: 'inline-flex items-center justify-center gap-1.5 whitespace-nowrap h-8 px-3 rounded-md text-[13px] font-medium text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 disabled:opacity-40 transition',
   ghost: 'inline-flex items-center justify-center gap-1.5 h-8 px-2.5 rounded-md text-[13px] text-slate-600 hover:bg-slate-100 disabled:opacity-40 transition',
 };
 

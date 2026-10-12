@@ -18,7 +18,7 @@ import { FRANKIE, NAMED_IDS, PLATFORM, POLICY, SECRET, byId } from './config.mjs
 import { ClientError, rerun, decide, forgetIndex, intermediaryForToken, list, network, offboard, onboard, provideDocument, refresh, reverseMerge, tokenFor } from './tier1.mjs';
 import { store } from './store.mjs';
 import { FONTS, brandFor, resetBrand, saveBrand } from './brand.mjs';
-import { addClientComment, addPlatformComment, intermediaryAttachment, intermediaryFile, platformAttachment, platformFile, sendIdvLink } from './clientfile.mjs';
+import { reviewComparison, addClientComment, addPlatformComment, intermediaryAttachment, intermediaryFile, platformAttachment, platformFile, sendIdvLink } from './clientfile.mjs';
 import { DEMO_PEOPLE } from './demo-people.mjs';
 
 const OPERATOR_TOKEN = `opt_${crypto.createHmac('sha256', `${SECRET}:operator`).update('operator').digest('hex').slice(0, 32)}`;
@@ -91,6 +91,8 @@ async function route(req, res) {
     if (br && req.method === 'PUT') return send(res, 200, saveBrand(br[1], await readBody(req)));
     if (br && req.method === 'DELETE') return send(res, 200, resetBrand(br[1]));
     if (p === '/internal/reset' && req.method === 'POST') { store.reset(); return send(res, 200, { reset: true }); }
+    const rc = p.match(/^\/internal\/reviews\/(R-[A-Z0-9]+)\/comparison$/);
+    if (rc && req.method === 'GET') return send(res, 200, await reviewComparison(rc[1]));
     const rv = p.match(/^\/internal\/reviews\/(R-[A-Z0-9]+)$/);
     if (rv && req.method === 'POST') { const b = await readBody(req); return send(res, 200, await decide(rv[1], b.decision, b.entityId)); }
     const mg = p.match(/^\/internal\/merges\/(M-[A-Z0-9]+)\/reverse$/);

@@ -1,11 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
 import { Activity as ActivityIcon, ChevronRight, Database, Eye, GitMerge, Loader2, Scale, Undo2 } from 'lucide-react';
-import { decideReview, reverseMerge } from '../../api';
-import { Attributes, Avatar, Badge, Body, Empty, ListToolbar, Loading, Panel, StatusPill, TopBar, ago, btn, fmtDateTime, td, th } from '../../components/ui';
+import { decideReview, reverseMerge, reviewComparison } from '../../api';
+import { Thumb } from '../../components/ClientFile';
+import { Attributes, Avatar, Badge, Body, CopyValue, Empty, ListToolbar, Loading, Panel, StatusPill, TopBar, ago, btn, fmtDate, fmtDateTime, td, th } from '../../components/ui';
 
 const useData = () => useOutletContext();
-const docLine = (d) => (d ? `${d.type.replace(/_/g, ' ').toLowerCase()} ····${d.last4}` : '—');
 
 function useAct(reload) {
   const [busy, setBusy] = useState('');
@@ -71,19 +71,116 @@ export function Records() {
 }
 
 // ── decisions ───────────────────────────────────────────────────────
+const norm = (v) => String(v ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+const fmtDob = (d) => (d ? `${new Date(`${d}T00:00:00`).toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' })} (age ${Math.floor((Date.now() - Date.parse(d)) / 31557600000)})` : '—');
+
+/** One comparison row: label, the new submission, the record already held, and whether they agree. */
+function Row({ label, a, b, same }) {
+  return (
+    <tr className="border-t border-slate-100 align-top">
+      <td className="py-3 pr-4 text-[13px] text-slate-500 w-40">
+        <span className="flex items-center gap-1.5">
+          {same === true && <span title="Same on both" className="w-1.5 h-1.5 rounded-full bg-green-500" />}
+          {same === false && <span title="Different" className="w-1.5 h-1.5 rounded-full bg-amber-500" />}
+          {label}
+        </span>
+      </td>
+      <td className={`py-3 pr-6 text-[13px] text-slate-900 ${same === false ? 'bg-amber-50/50' : ''}`}>{a ?? '—'}</td>
+      <td className={`py-3 text-[13px] text-slate-900 ${same === false ? 'bg-amber-50/50' : ''}`}>{b ?? '—'}</td>
+    </tr>
+  );
+}
+
+function DocBlock({ p }) {
+  if (!p.documents.length) return <span className="text-slate-400">None on file</span>;
+  return (
+    <div className="space-y-3">
+      {p.documents.map((d) => (
+        <div key={d.documentId} className="rounded-lg border border-slate-200 p-3">
+          <p className="font-medium text-slate-900">{d.type}</p>
+          <dl className="mt-1.5 grid grid-cols-[96px_1fr] gap-y-0.5 text-[12px]">
+            {d.number && <><dt className="text-slate-500">Number</dt><dd className="font-mono"><CopyValue value={d.number} /></dd></>}
+            {d.cardNumber && <><dt className="text-slate-500">Card number</dt><dd className="font-mono">{d.cardNumber}</dd></>}
+            {d.colour && <><dt className="text-slate-500">Colour</dt><dd>{d.colour}, position {d.position}</dd></>}
+            {d.nameOnCard && <><dt className="text-slate-500">Name on card</dt><dd>{d.nameOnCard}</dd></>}
+            {d.state && <><dt className="text-slate-500">Issued in</dt><dd>{d.state}{d.country ? `, ${d.country}` : ''}</dd></>}
+            {d.expiry && <><dt className="text-slate-500">Expires</dt><dd>{fmtDate(d.expiry)}</dd></>}
+          </dl>
+          <div className="mt-2.5 flex gap-1.5 items-center">
+            {d.attachments.length
+              ? d.attachments.map((at) => <Thumb key={at.attachmentId} att={at} path={`/internal/entities/${p.entityId}/documents/${d.documentId}/attachments/${at.attachmentId}`} />)
+              : <span className="text-[12px] text-slate-400">No images on file</span>}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function Comparison({ rv, cmp, busy, act }) {
+  const a = cmp.submitted;
+  const biz = rv.kind === 'business';
+  return cmp.candidates.map((b, idx) => {
+    const c = rv.candidates[idx];
+    const sameDoc = a.documents.some((x) => b.documents.some((y) => x.number && x.number === y.number));
+    return (
+      <div key={b.entityId} className="flex-1 min-w-0 overflow-y-auto px-6 py-5">
+        <h1 className="text-[18px] font-semibold text-slate-900">Is this the same person?</h1>
+        <p className="mt-1 text-[13px] text-slate-500">
+          The duplicate check matched on {c.matchedOn.map((f) => f.replace(/_/g, ' ').toLowerCase()).join(', ')}. There's no identity document in common, so the merge policy leaves it to you. {rv.intermediary} sees “In review”.
+        </p>
+        <table className="mt-5 w-full max-w-5xl">
+          <thead>
+            <tr className="text-left text-[12px] text-slate-500">
+              <th className="pb-2 w-40" />
+              <th className="pb-2 pr-6 font-medium"><span className="text-amber-700">New submission</span> · from {rv.intermediary}</th>
+              <th className="pb-2 font-medium"><span className="text-slate-900">Already on the network</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            <Row label="First onboarded" a={fmtDateTime(a.firstOnboarded)} b={<>{fmtDateTime(b.firstOnboarded)} <span className="text-slate-500">· {ago(b.firstOnboarded)}</span></>} />
+            <Row label="Held by" a={a.heldBy.map((h) => `${h.intermediary} (${h.clientRef})`).join(', ')}
+              b={<div className="space-y-0.5">{b.heldBy.map((h) => <p key={h.intermediary + h.clientRef}>{h.intermediary} <span className="text-slate-500">· {h.clientRef}{h.role ? ` · ${h.role}` : ''} · since {fmtDate(h.since)}</span></p>)}</div>} />
+            <Row label="Name" a={a.name} b={b.name} same={norm(a.name) === norm(b.name)} />
+            <Row label="Date of birth" a={fmtDob(a.dateOfBirth)} b={fmtDob(b.dateOfBirth)} same={a.dateOfBirth === b.dateOfBirth} />
+            <Row label="Address" a={a.address} b={b.address} same={norm(a.address) === norm(b.address)} />
+            {(a.email || b.email) && <Row label="Email" a={a.email} b={b.email} same={a.email && b.email ? a.email.toLowerCase() === b.email.toLowerCase() : undefined} />}
+            {(a.phone || b.phone) && <Row label="Mobile" a={a.phone} b={b.phone} same={a.phone && b.phone ? norm(a.phone) === norm(b.phone) : undefined} />}
+            <Row label="Identity documents" a={<DocBlock p={a} />} b={<DocBlock p={b} />} same={sameDoc} />
+            <Row label="Latest workflow" a={a.latestRun ? `${a.latestRun.workflow} · ${a.latestRun.result}` : 'Not verified yet'}
+              b={b.latestRun ? <>{b.latestRun.workflow} · <Badge tone={b.latestRun.result === 'Passed' ? 'green' : 'slate'}>{b.latestRun.result}</Badge> <span className="text-slate-500">· {fmtDate(b.latestRun.at)}{b.latestRun.risk ? ` · ${b.latestRun.risk} risk` : ''}</span></> : '—'} />
+            <Row label="FrankieOne ID" a={<CopyValue value={a.entityId} />} b={<CopyValue value={b.entityId} />} />
+          </tbody>
+        </table>
+        <div className="mt-6 flex items-center gap-2">
+          <button disabled={!!busy} onClick={() => act(rv.id, () => decideReview(rv.id, 'merge', b.entityId))} className={btn.primary}>
+            {busy === rv.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <GitMerge className="w-4 h-4" />} Same person: merge
+          </button>
+          <button disabled={!!busy} onClick={() => act(rv.id, () => decideReview(rv.id, 'different'))} className={btn.secondary}>Different {biz ? 'businesses' : 'people'}</button>
+          <span className="ml-2 text-[12px] text-slate-500">Merging keeps the record already held, moves {rv.intermediary}’s reference across and reuses its passed checks.</span>
+        </div>
+      </div>
+    );
+  });
+}
+
 export function Decisions() {
   const { data, reload } = useData();
   const { busy, error, act } = useAct(reload);
   const [selected, setSelected] = useState(null);
-  if (!data) return <><TopBar crumbs={[{ label: 'Decisions' }]} /><Loading /></>;
-  const reviews = data.reviews;
+  const [cmp, setCmp] = useState({});
+  const reviews = data?.reviews || [];
   const rv = reviews.find((r) => r.id === selected) || reviews[0];
+  useEffect(() => {
+    if (rv && rv.kind !== 'business' && !cmp[rv.id]) reviewComparison(rv.id).then((c) => setCmp((m) => ({ ...m, [rv.id]: c }))).catch(() => {});
+  }, [rv?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!data) return <><TopBar crumbs={[{ label: 'Decisions' }]} /><Loading /></>;
   return (
     <>
       <TopBar crumbs={[{ label: 'Decisions' }]} />
       {reviews.length === 0 ? <Body><Empty icon={Scale} title="Nothing waiting for a decision">Possible duplicates the merge policy can't settle appear here.</Empty></Body> : (
         <div className="flex-1 min-h-0 flex">
-          <ul className="w-80 shrink-0 border-r border-slate-200 overflow-y-auto">
+          <ul className="w-72 shrink-0 border-r border-slate-200 overflow-y-auto">
             {reviews.map((r) => (
               <li key={r.id}>
                 <button onClick={() => setSelected(r.id)} className={`w-full text-left px-5 py-3 border-b border-slate-100 ${r === rv ? 'bg-slate-100' : 'hover:bg-slate-50'}`}>
@@ -93,43 +190,35 @@ export function Decisions() {
               </li>
             ))}
           </ul>
-          {rv && rv.candidates.map((c) => {
-            const biz = rv.kind === 'business';
-            const row = (label, a, b) => (
-              <tr className="border-t border-slate-100">
-                <td className="py-2.5 pr-4 text-[13px] text-slate-500 w-36">{label}</td>
-                <td className="py-2.5 pr-4 text-[13px] text-slate-900">{a}</td>
-                <td className="py-2.5 text-[13px] text-slate-900">{b}</td>
-              </tr>
-            );
-            return (
-              <div key={c.entityId} className="flex-1 min-w-0 overflow-y-auto px-6 py-5">
-                <h1 className="text-[18px] font-semibold text-slate-900">Is this the {biz ? 'same business' : 'same person'}?</h1>
-                <p className="mt-1 text-[13px] text-slate-500">Matched on {c.matchedOn.map((f) => f.replace(/_/g, ' ').toLowerCase()).join(', ')}, which isn't enough to merge automatically. {rv.intermediary} sees “In review”.</p>
-                <table className="mt-5 w-full max-w-3xl">
-                  <thead><tr className="text-left text-[12px] text-slate-500"><th className="font-medium pb-2" /><th className="font-medium pb-2">New submission</th><th className="font-medium pb-2">Already on the network</th></tr></thead>
-                  <tbody>
-                    {row('Name', rv.submitted?.name, c.name)}
-                    {!biz && row('Date of birth', rv.submitted?.dateOfBirth, c.dateOfBirth)}
-                    {!biz && row('Document', docLine(rv.submitted?.document), docLine(c.document))}
-                    {row('Held by', rv.intermediary, c.heldBy?.filter(Boolean).join(', ') || '—')}
-                    {row('Reference', <span className="font-mono">{rv.submitted?.clientRef}</span>, '—')}
-                    {row('Record', <span className="font-mono text-slate-500">{rv.newEntityId?.slice(0, 8)}</span>, <span className="font-mono text-slate-500">{c.entityId.slice(0, 8)}</span>)}
-                  </tbody>
-                </table>
-                <div className="mt-6 flex gap-2">
-                  <button disabled={!!busy} onClick={() => act(rv.id, () => decideReview(rv.id, 'merge', c.entityId))} className={btn.primary}>
-                    {busy === rv.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <GitMerge className="w-4 h-4" />} Same {biz ? 'business' : 'person'}: merge
-                  </button>
-                  <button disabled={!!busy} onClick={() => act(rv.id, () => decideReview(rv.id, 'different'))} className={btn.secondary}>Different {biz ? 'businesses' : 'people'}</button>
-                </div>
-                {error && <p className="mt-3 text-[13px] text-red-700">{error}</p>}
-              </div>
-            );
-          })}
+          {rv.kind === 'business' ? <BusinessDecision rv={rv} busy={busy} act={act} />
+            : cmp[rv.id] ? <Comparison rv={rv} cmp={cmp[rv.id]} busy={busy} act={act} />
+            : <div className="flex-1"><Loading>Loading both records from FrankieOne…</Loading></div>}
+          {error && <p className="absolute bottom-4 right-6 text-[13px] text-red-700">{error}</p>}
         </div>
       )}
     </>
+  );
+}
+
+/** A business held on name and postcode: the platform's own details are all there is to compare. */
+function BusinessDecision({ rv, busy, act }) {
+  const c = rv.candidates[0];
+  return (
+    <div className="flex-1 min-w-0 overflow-y-auto px-6 py-5">
+      <h1 className="text-[18px] font-semibold text-slate-900">Is this the same business?</h1>
+      <p className="mt-1 text-[13px] text-slate-500">No ABN or ACN on either, so the platform matched the normalised name and postcode. {rv.intermediary} sees “In review”.</p>
+      <table className="mt-5 w-full max-w-3xl">
+        <tbody>
+          <Row label="Name" a={rv.submitted?.name} b={c.name} same={norm(rv.submitted?.name) === norm(c.name)} />
+          <Row label="Held by" a={rv.intermediary} b={c.heldBy?.filter(Boolean).join(', ')} />
+          <Row label="FrankieOne ID" a={<CopyValue value={rv.newEntityId} />} b={<CopyValue value={c.entityId} />} />
+        </tbody>
+      </table>
+      <div className="mt-6 flex gap-2">
+        <button disabled={!!busy} onClick={() => act(rv.id, () => decideReview(rv.id, 'merge', c.entityId))} className={btn.primary}><GitMerge className="w-4 h-4" /> Same business: merge</button>
+        <button disabled={!!busy} onClick={() => act(rv.id, () => decideReview(rv.id, 'different'))} className={btn.secondary}>Different businesses</button>
+      </div>
+    </div>
   );
 }
 

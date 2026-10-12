@@ -87,7 +87,7 @@ export function Risk({ risk, full }) {
   );
 }
 
-function Thumb({ path, att }) {
+export function Thumb({ path, att }) {
   const [url, setUrl] = useState(null);
   const [failed, setFailed] = useState(false);
   const isImage = String(att.mimeType || '').startsWith('image/');
