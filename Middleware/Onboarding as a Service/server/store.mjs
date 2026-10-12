@@ -53,7 +53,13 @@ export const store = {
   find: (intermediaryId, handle) => db.relationships.find((r) => r.intermediaryId === intermediaryId && r.handle === handle && !r.removedAt),
   findByEntity: (intermediaryId, entityId) => db.relationships.find((r) => r.intermediaryId === intermediaryId && r.entityId === entityId && !r.removedAt),
   add(rel) { db.relationships.push(rel); save(); return rel; },
-  update(rel, changes) { Object.assign(rel, changes, { updatedAt: new Date().toISOString() }); save(); return rel; },
+  update(rel, changes) {
+    // Keep every verification run this relationship has had, so its history can be shown to it alone.
+    const ids = new Set([...(rel.executionIds || []), rel.executionId, changes.executionId].filter(Boolean));
+    Object.assign(rel, changes, { executionIds: [...ids], updatedAt: new Date().toISOString() });
+    save();
+    return rel;
+  },
   allRelationships: () => db.relationships,
 
   // disclosure log

@@ -35,6 +35,9 @@ export const listClients = () => call('GET', '/api/v1/clients');
 export const getClient = (handle) => call('GET', `/api/v1/clients/${handle}`);
 export const submitClient = (body) => call('POST', '/api/v1/clients', body);
 export const provideDocument = (handle, type) => call('POST', `/api/v1/clients/${handle}/documents`, { type });
+export const getClientFile = (handle) => call('GET', `/api/v1/clients/${handle}/file`);
+export const uploadDocument = (handle, body) => call('POST', `/api/v1/clients/${handle}/documents`, body);
+export const idvLink = (handle, person) => call('POST', `/api/v1/clients/${handle}/idv-link`, { person });
 export const removeClient = (handle) => call('DELETE', `/api/v1/clients/${handle}`);
 
 // platform view
@@ -42,4 +45,13 @@ export const network = () => call('GET', '/internal/network');
 export const resetDemo = () => call('POST', '/internal/reset');
 export const decideReview = (id, decision, entityId) => call('POST', `/internal/reviews/${id}`, { decision, entityId });
 export const reverseMerge = (id) => call('POST', `/internal/merges/${id}/reverse`);
+export const getEntityFile = (entityId) => call('GET', `/internal/entities/${entityId}/file`);
 export const forgetIndex = (entityId) => call('POST', '/internal/forget', { entityId });
+
+/** A document's file (photo, scan, PDF), fetched with the signed-in token, as a local object URL. */
+export async function fileUrl(path) {
+  const token = getSession()?.token;
+  const res = await fetch(path, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+  if (!res.ok) throw new Error(`That file couldn't be loaded (${res.status}).`);
+  return URL.createObjectURL(await res.blob());
+}

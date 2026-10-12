@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ShieldCheck, RefreshCw, LogOut, Trash2, Repeat, GitMerge, AlertTriangle, Undo2, Loader2, Activity, Building2, User } from 'lucide-react';
-import { decideReview, forgetIndex, getSession, network, resetDemo, reverseMerge, setSession } from '../api';
+import { FolderOpen, X, ShieldCheck, RefreshCw, LogOut, Trash2, Repeat, GitMerge, AlertTriangle, Undo2, Loader2, Activity, Building2, User } from 'lucide-react';
+import { decideReview, forgetIndex, getSession, network, resetDemo, reverseMerge, setSession, getEntityFile } from '../api';
+import { Documents, History, Risk, Verifications, printFile } from '../components/ClientFile';
 import { StatusPill } from './Console';
 
 const fmt = (iso) => (iso ? new Date(iso).toLocaleString('en-AU', { dateStyle: 'short', timeStyle: 'medium' }) : '');
@@ -26,6 +27,7 @@ export default function Platform({ demo }) {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [busy, setBusy] = useState('');
+  const [openFile, setOpenFile] = useState(null);
   const act = async (key, fn) => {
     setBusy(key); setError('');
     try { await fn(); await load(); } catch (e) { setError(e.message); } finally { setBusy(''); }
@@ -148,6 +150,9 @@ export default function Platform({ demo }) {
                       <p className="text-xs text-slate-400 font-mono">FrankieOne {inv.entityType === 'ORGANIZATION' ? 'organisation' : 'entity'} {inv.entityId}</p>
                     </div>
                     <span className="text-xs text-slate-500 text-right">
+                      <button onClick={() => setOpenFile(inv)} className="mb-1 px-2.5 py-1 rounded-md border border-slate-300 text-xs text-slate-700 inline-flex items-center gap-1.5 hover:bg-slate-50">
+                        <FolderOpen className="w-3.5 h-3.5" /> Client file
+                      </button><br />
                       {inv.relationships.filter((r) => !r.removedAt).length} active {inv.relationships.filter((r) => !r.removedAt).length === 1 ? 'relationship' : 'relationships'}
                       {inv.entityType !== 'ORGANIZATION' && <button title="Presenter tool: drop this record's identity index entries, as if the client had never been indexed. The next submission then relies on FrankieOne's duplicate check."
                         onClick={() => act(`f-${inv.entityId}`, () => forgetIndex(inv.entityId))} className="block ml-auto mt-0.5 text-[11px] text-slate-400 hover:text-slate-700 underline decoration-dotted">
@@ -259,6 +264,7 @@ export default function Platform({ demo }) {
           </>
         )}
       </main>
+      {openFile && <EntityFile inv={openFile} onClose={() => setOpenFile(null)} />}
     </div>
   );
 }
@@ -281,6 +287,66 @@ function Stat({ label, value, hint }) {
       <p className="text-2xl font-bold text-navy">{value}</p>
       <p className="text-xs text-slate-500">{label}</p>
       {hint && <p className="text-[11px] text-slate-400">{hint}</p>}
+    </div>
+  );
+}
+
+const FILE_TABS = [['verifications', 'Verifications'], ['risk', 'Risk'], ['documents', 'Documents'], ['history', 'Audit history'], ['holders', 'Held by']];
+
+/**
+ * The platform's full client file: every run on the record and who it was
+ * for, the full risk assessment with scores, every document, and the whole
+ * FrankieOne audit trail. Intermediaries only ever see their own slice.
+ */
+function EntityFile({ inv, onClose }) {
+  const [file, setFile] = useState(null);
+  const [tab, setTab] = useState('verifications');
+  const [error, setError] = useState('');
+  useEffect(() => { getEntityFile(inv.entityId).then(setFile).catch((e) => setError(e.message)); }, [inv.entityId]);
+  const attachmentPath = (d, a) => `/internal/entities/${inv.entityId}/documents/${d.documentId}/attachments/${a.attachmentId}`;
+  return (
+    <div className="fixed inset-0 z-40 bg-black/30 flex justify-end">
+      <div className="bg-white w-full max-w-3xl h-full overflow-y-auto">
+        <div className="sticky top-0 bg-white z-10 px-6 pt-8 border-b border-slate-100">
+          <div className="flex items-start justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-900">{inv.name}</h2>
+              <p className="text-xs text-slate-400 font-mono">FrankieOne {inv.entityType === 'ORGANIZATION' ? 'organisation' : 'entity'} {inv.entityId}{file?.state ? ` · ${file.state}` : ''}</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button disabled={!file} onClick={() => printFile(file, { title: `Client file: ${inv.name}`, subtitle: `Platform compliance view · FrankieOne record ${inv.entityId}`, full: true })}
+                className="px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs disabled:opacity-50">Client file (PDF)</button>
+              <button onClick={onClose}><X className="w-5 h-5 text-slate-400" /></button>
+            </div>
+          </div>
+          <nav className="mt-4 flex gap-4 text-sm">
+            {FILE_TABS.map(([k, label]) => (
+              <button key={k} onClick={() => setTab(k)} className={`pb-2 border-b-2 ${tab === k ? 'border-slate-900 text-slate-900 font-medium' : 'border-transparent text-slate-500'}`}>{label}</button>
+            ))}
+          </nav>
+        </div>
+        <div className="p-6">
+          {error && <p className="text-sm text-red-700">{error}</p>}
+          {!file && !error && <p className="text-sm text-slate-400 inline-flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Loading from FrankieOne…</p>}
+          {file && tab === 'verifications' && <Verifications items={file.verifications} full />}
+          {file && tab === 'risk' && <Risk risk={file.risk} full />}
+          {file && tab === 'documents' && <Documents items={file.documents} attachmentPath={attachmentPath} full />}
+          {file && tab === 'history' && <History items={file.history} full />}
+          {file && tab === 'holders' && (
+            <table className="w-full text-sm">
+              <thead className="text-xs text-slate-400 uppercase tracking-wide"><tr><th className="text-left py-1">Intermediary</th><th className="text-left py-1">Their reference</th><th className="text-left py-1">Handle</th><th className="text-left py-1">As</th></tr></thead>
+              <tbody>
+                {file.holders.map((h, i) => (
+                  <tr key={i} className={`border-t border-slate-100 ${h.removedAt ? 'opacity-40' : ''}`}>
+                    <td className="py-1.5">{h.intermediary}</td><td className="py-1.5 font-mono text-xs">{h.clientRef}</td><td className="py-1.5 font-mono text-xs text-slate-500">{h.handle}</td><td className="py-1.5 text-xs text-slate-500">{h.role || 'Client'}{h.removedAt ? ' (left)' : ''}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          {file && <p className="mt-6 text-[11px] text-slate-400">FrankieOne's own PDF audit report for this record is generated by the compliance team in the FrankieOne Portal.</p>}
+        </div>
+      </div>
     </div>
   );
 }

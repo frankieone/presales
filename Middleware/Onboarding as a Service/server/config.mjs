@@ -115,6 +115,8 @@ export const INTERMEDIARIES = [...NAMED, ...GENERATED];
  * for example someone who used a different document at each intermediary.
  */
 export const DUPLICATE_WORKFLOW = setting('DUPLICATE_WORKFLOW', 'AUS-Basic2V-TwoPlus-Duplicate');
+/** OneSDK flow for the hosted ID check (document photo and selfie) an intermediary can send a client. */
+export const IDV_FLOW = setting('IDV_FLOW', 'idv_daon');
 
 /**
  * The business registry check, run on a business client that has an ABN or

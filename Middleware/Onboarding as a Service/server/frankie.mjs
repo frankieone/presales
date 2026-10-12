@@ -92,3 +92,39 @@ export const getRegistryCheck = (organizationId, workflow, executionId) =>
   call('GET', `/v2/organizations/${organizationId}/serviceprofiles/${sp}/workflows/${workflow}/executions/${executionId}`);
 
 export const listWorkflows = () => call('GET', '/v2/workflows');
+
+// ── the client file: history, risk, workflows, documents ────────────
+const base = (entityType) => (entityType === 'ORGANIZATION' ? 'organizations' : 'individuals');
+
+/** Every audit event on a record, newest first: checks, status and risk changes, operator actions. */
+export async function listAudit(entityId) {
+  const events = [];
+  for (let page = 1; page <= 5; page++) {
+    const r = await call('GET', `/v2/audit?entityId=${entityId}&limit=100&page=${page}`);
+    events.push(...(r.events || []));
+    if (events.length >= (r.meta?.total || 0) || !(r.events || []).length) break;
+  }
+  return events;
+}
+
+/** The service profile: current state, latest risk assessment and a summary of every workflow run. */
+export const getServiceProfile = (entityId, entityType) => call('GET', `/v2/${base(entityType)}/${entityId}/serviceprofiles/${sp}`);
+
+/** Every run of one workflow on a record, with step results. */
+export const listExecutions = (entityId, workflow, entityType) =>
+  call('GET', `/v2/${base(entityType)}/${entityId}/serviceprofiles/${sp}/workflows/${workflow}/executions`);
+
+/** Documents held against a record, by class, with attachment metadata. */
+export const listDocuments = (entityId, entityType) => call('GET', `/v2/${base(entityType)}/${entityId}/documents?level=meta`);
+
+/** One document, with its attachments' data (photos, scans) in base64. */
+export const getDocumentData = (entityId, documentId, entityType) =>
+  call('GET', `/v2/${base(entityType)}/${entityId}/documents/${documentId}?level=base64`);
+
+/** Attach a standalone document (and its file) to a record. */
+export const addDocument = (entityId, document, entityType, channel) =>
+  call('POST', `/v2/${base(entityType)}/${entityId}/documents?level=meta`, { document }, channel);
+
+/** A one-time link for the person to photograph their ID and take a selfie on their phone (hosted OneSDK). */
+export const hostedIdvUrl = (entityId, flowId) =>
+  call('POST', '/v2/individuals/hostedUrl', { entityId, consent: true, oneSDKFlowId: flowId, sendSMS: false });

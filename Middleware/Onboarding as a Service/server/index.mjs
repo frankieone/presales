@@ -17,10 +17,16 @@ import crypto from 'node:crypto';
 import { FRANKIE, NAMED_IDS, PLATFORM, POLICY, SECRET, byId } from './config.mjs';
 import { ClientError, decide, forgetIndex, intermediaryForToken, list, network, offboard, onboard, provideDocument, refresh, reverseMerge, tokenFor } from './tier1.mjs';
 import { store } from './store.mjs';
+import { intermediaryAttachment, intermediaryFile, platformAttachment, platformFile, sendIdvLink } from './clientfile.mjs';
 import { DEMO_PEOPLE } from './demo-people.mjs';
 
 const OPERATOR_TOKEN = `opt_${crypto.createHmac('sha256', `${SECRET}:operator`).update('operator').digest('hex').slice(0, 32)}`;
 const DIST = path.resolve(import.meta.dirname, '..', 'dist');
+
+function sendFile(res, { mimeType, filename, bytes }) {
+  res.writeHead(200, { 'Content-Type': mimeType, 'Content-Disposition': `inline; filename="${filename.replace(/"/g, '')}"`, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
+  res.end(bytes);
+}
 
 function send(res, status, body) {
   res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
@@ -54,6 +60,12 @@ async function route(req, res) {
     if (m && req.method === 'DELETE') return send(res, 200, await offboard(im, m[1]));
     const d = p.match(/^\/api\/v1\/clients\/(C-[A-Z0-9]+)\/documents$/);
     if (d && req.method === 'POST') return send(res, 200, await provideDocument(im, d[1], await readBody(req)));
+    const f = p.match(/^\/api\/v1\/clients\/(C-[A-Z0-9]+)\/file$/);
+    if (f && req.method === 'GET') return send(res, 200, await intermediaryFile(im, f[1]));
+    const a = p.match(/^\/api\/v1\/clients\/(C-[A-Z0-9]+)\/documents\/([0-9a-f-]{36})\/attachments\/([0-9a-f-]{36})$/);
+    if (a && req.method === 'GET') return sendFile(res, await intermediaryAttachment(im, a[1], a[2], a[3], url.searchParams.get('person')));
+    const v = p.match(/^\/api\/v1\/clients\/(C-[A-Z0-9]+)\/idv-link$/);
+    if (v && req.method === 'POST') return send(res, 200, await sendIdvLink(im, v[1], (await readBody(req)).person));
     return send(res, 404, { error: 'NOT_FOUND' });
   }
 
@@ -66,6 +78,10 @@ async function route(req, res) {
     if (rv && req.method === 'POST') { const b = await readBody(req); return send(res, 200, await decide(rv[1], b.decision, b.entityId)); }
     const mg = p.match(/^\/internal\/merges\/(M-[A-Z0-9]+)\/reverse$/);
     if (mg && req.method === 'POST') return send(res, 200, await reverseMerge(mg[1]));
+    const ef = p.match(/^\/internal\/entities\/([0-9a-f-]{36})\/file$/);
+    if (ef) return send(res, 200, await platformFile(ef[1]));
+    const ea = p.match(/^\/internal\/entities\/([0-9a-f-]{36})\/documents\/([0-9a-f-]{36})\/attachments\/([0-9a-f-]{36})$/);
+    if (ea) return sendFile(res, await platformAttachment(ea[1], ea[2], ea[3]));
     if (p === '/internal/forget' && req.method === 'POST') return send(res, 200, forgetIndex((await readBody(req)).entityId));
     return send(res, 404, { error: 'NOT_FOUND' });
   }

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Building2, Info, Loader2, LogOut, RefreshCw, UserPlus, X, Code2, UserMinus, User, FileUp } from 'lucide-react';
-import { demoPeople, getClient, getSession, listClients, me, provideDocument, removeClient, setSession, submitClient } from '../api';
+import { Building2, Info, Loader2, LogOut, RefreshCw, UserPlus, X, Code2, UserMinus, User, Download } from 'lucide-react';
+import { demoPeople, getClient, getClientFile, getSession, idvLink, listClients, me, removeClient, setSession, submitClient, uploadDocument } from '../api';
+import { Documents, History, IdvLink, Risk, UploadDocument, Verifications, printFile } from '../components/ClientFile';
 
 const STATUS = {
   VERIFIED: ['Verified', 'bg-green-50 text-green-700 border-green-200'],
@@ -16,7 +17,7 @@ export function StatusPill({ status }) {
 }
 
 const ROLE_LABEL = { DIRECTOR: 'Director', TRUSTEE: 'Trustee', PARTNER: 'Partner', BENEFICIAL_OWNER: 'Beneficial owner', SIGNATORY: 'Authorised signatory' };
-const DOCUMENT_FOR = { Trust: 'Trust deed', Partnership: 'Partnership agreement', Company: 'Certificate of registration', 'Other organisation': 'Constitution' };
+const ESTABLISHING_FOR = { Trust: 'TRUST_DEED', Partnership: 'PARTNERSHIP_AGREEMENT', Company: 'CERTIFICATE_OF_REGISTRATION', 'Other organisation': 'CONSTITUTION' };
 const subtitle = (c) => (c.kind === 'BUSINESS'
   ? `${c.businessType || 'Business'} · ${c.people?.length || 0} ${c.people?.length === 1 ? 'person' : 'people'}`
   : `Born ${c.dateOfBirth}`);
@@ -144,7 +145,7 @@ export default function Console({ demo }) {
           onDone={(c) => { setShowForm(false); load(); setSelected(c); }} />
       )}
       {selected && (
-        <ClientPanel client={selected} onClose={() => setSelected(null)}
+        <ClientPanel key={selected.handle} client={selected} imName={im.name} onClose={() => setSelected(null)}
           onChanged={(c) => { load(); setSelected(c); }} />
       )}
     </div>
@@ -462,95 +463,182 @@ function OnboardForm({ im, people, count, minResponseMs, onClose, onDone }) {
   );
 }
 
-function ClientPanel({ client, onClose, onChanged }) {
+const TABS = [['summary', 'Summary'], ['verifications', 'Verifications'], ['risk', 'Risk'], ['documents', 'Documents'], ['history', 'History']];
+
+/**
+ * One client: the status the platform returned, and the client file
+ * (verifications, risk, documents, history) scoped to this intermediary.
+ */
+function ClientPanel({ client, imName, onClose, onChanged }) {
+  const business = client.kind === 'BUSINESS';
+  const [tab, setTab] = useState('summary');
+  const [file, setFile] = useState(null);
+  const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
-  const [showJson, setShowJson] = useState(true);
+  const [showJson, setShowJson] = useState(false);
+  const [person, setPerson] = useState(null);
+
+  const loadFile = useCallback(async () => {
+    setLoading(true); setError('');
+    try { const f = await getClientFile(client.handle); setFile(f); return f; } catch (e) { setError(e.message); return null; } finally { setLoading(false); }
+  }, [client.handle]);
+  useEffect(() => { if (tab !== 'summary' && !file) loadFile(); }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const refresh = async () => {
     setBusy('refresh'); setError('');
-    try { onChanged(await getClient(client.handle)); } catch (e) { setError(e.message); } finally { setBusy(''); }
-  };
-  const provide = async (type) => {
-    setBusy('document'); setError('');
-    try { onChanged(await provideDocument(client.handle, type)); } catch (e) { setError(e.message); } finally { setBusy(''); }
+    try { onChanged(await getClient(client.handle)); if (file) await loadFile(); } catch (e) { setError(e.message); } finally { setBusy(''); }
   };
   const remove = async () => {
     setBusy('remove'); setError('');
     try { await removeClient(client.handle); onChanged(null); onClose(); } catch (e) { setError(e.message); } finally { setBusy(''); }
   };
+  const upload = async (body) => { onChanged(await uploadDocument(client.handle, body)); await loadFile(); };
+  const download = async () => {
+    setBusy('print');
+    const f = file || await loadFile();
+    setBusy('');
+    if (f) printFile(f, { title: `Client file: ${client.name}`, subtitle: `${imName} · your reference ${client.clientRef} · ${client.handle}` });
+  };
+  const attachmentPath = (personHandle) => (d, a) => `/api/v1/clients/${client.handle}/documents/${d.documentId}/attachments/${a.attachmentId}${personHandle ? `?person=${personHandle}` : ''}`;
+  const tabs = business ? [...TABS.slice(0, 1), ['people', 'People'], ...TABS.slice(1)] : TABS;
 
   return (
     <div className="fixed inset-0 z-40 bg-black/30 flex justify-end">
-      <div className="bg-white w-full max-w-md h-full overflow-y-auto p-6 pt-10">
-        <div className="flex items-start justify-between">
-          <div>
-            <h2 className="text-lg font-semibold text-slate-900">{client.name}</h2>
-            <p className="text-sm text-slate-500">{subtitle(client)}</p>
+      <div className="bg-white w-full max-w-2xl h-full overflow-y-auto">
+        <div className="sticky top-0 bg-white z-10 px-6 pt-8 border-b border-slate-100">
+          <div className="flex items-start justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-900">{client.name}</h2>
+              <p className="text-sm text-slate-500">{subtitle(client)} · <StatusPill status={client.status} /></p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={download} disabled={!!busy} className="px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs inline-flex items-center gap-1.5">
+                {busy === 'print' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />} Client file (PDF)
+              </button>
+              <button onClick={onClose}><X className="w-5 h-5 text-slate-400" /></button>
+            </div>
           </div>
-          <button onClick={onClose}><X className="w-5 h-5 text-slate-400" /></button>
-        </div>
-        <dl className="mt-5 grid grid-cols-2 gap-y-3 text-sm">
-          <dt className="text-slate-500">Status</dt><dd><StatusPill status={client.status} /></dd>
-          <dt className="text-slate-500">Risk band</dt><dd>{client.riskBand}</dd>
-          <dt className="text-slate-500">Your reference</dt><dd className="font-mono text-xs">{client.clientRef}</dd>
-          <dt className="text-slate-500">Handle</dt><dd className="font-mono text-xs">{client.handle}</dd>
-          <dt className="text-slate-500">Method</dt><dd>{client.method}</dd>
-          <dt className="text-slate-500">Completed</dt><dd>{fmt(client.completedAt)}</dd>
-        </dl>
-
-        {client.kind === 'BUSINESS' && client.people?.length > 0 && (
-          <div className="mt-5">
-            <h3 className="text-sm font-semibold text-slate-700">People</h3>
-            <ul className="mt-2 divide-y divide-slate-100 border border-slate-200 rounded-lg">
-              {client.people.map((x, i) => (
-                <li key={i} className="px-3 py-2 flex items-center justify-between text-sm">
-                  <span><span className="text-slate-900">{x.name}</span> <span className="text-xs text-slate-500">· {ROLE_LABEL[x.role] || x.role}</span></span>
-                  <StatusPill status={x.status} />
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {client.actions?.length > 0 && (
-          <div className="mt-5">
-            <h3 className="text-sm font-semibold text-slate-700">Actions</h3>
-            {client.actions.map((a) => (
-              <div key={a.code} className="mt-2 text-sm bg-slate-50 rounded-lg p-3">
-                <p className="text-slate-700">{a.message}</p>
-                <p className="mt-1 text-xs text-slate-400">{a.owner === 'INTERMEDIARY' ? 'For you to do' : 'With the platform'} · {a.code}</p>
-                {['PROVIDE_ESTABLISHING_DOCUMENT', 'CHECK_REGISTRATION'].includes(a.code) && (
-                  <button onClick={() => provide(DOCUMENT_FOR[client.businessType] || 'Establishing document')} disabled={!!busy}
-                    className="mt-2 px-3 py-1.5 rounded-md border border-slate-300 bg-white text-xs inline-flex items-center gap-1.5">
-                    {busy === 'document' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileUp className="w-3.5 h-3.5" />}
-                    Provide {(DOCUMENT_FOR[client.businessType] || 'establishing document').toLowerCase()}
-                  </button>
-                )}
-              </div>
+          <nav className="mt-4 flex gap-4 text-sm overflow-x-auto">
+            {tabs.map(([k, label]) => (
+              <button key={k} onClick={() => setTab(k)} className={`pb-2 border-b-2 whitespace-nowrap ${tab === k ? 'border-slate-900 text-slate-900 font-medium' : 'border-transparent text-slate-500'}`}>{label}</button>
             ))}
-          </div>
-        )}
-
-        <div className="mt-6 flex gap-2">
-          <button onClick={refresh} disabled={!!busy} className="px-3 py-2 rounded-lg border border-slate-300 text-sm inline-flex items-center gap-1.5">
-            {busy === 'refresh' ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Check status
-          </button>
-          <button onClick={remove} disabled={!!busy} className="px-3 py-2 rounded-lg border border-slate-300 text-sm inline-flex items-center gap-1.5 text-slate-600">
-            {busy === 'remove' ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserMinus className="w-4 h-4" />} Client has left
-          </button>
+          </nav>
         </div>
-        {error && <p className="mt-3 text-sm text-red-700">{error}</p>}
 
-        <button onClick={() => setShowJson(!showJson)} className="mt-8 text-xs text-slate-500 inline-flex items-center gap-1.5">
-          <Code2 className="w-4 h-4" /> {showJson ? 'Hide' : 'Show'} the API response
-        </button>
-        {showJson && (
-          <>
-            <p className="mt-2 text-xs text-slate-500">Everything this intermediary received for this client. No entity ID, no other intermediary, no score, no data source.</p>
-            <pre className="mt-2 text-[11px] bg-slate-900 text-slate-100 rounded-lg p-3 overflow-x-auto">{JSON.stringify(client, null, 2)}</pre>
-          </>
-        )}
+        <div className="p-6">
+          {error && <p className="mb-3 text-sm text-red-700">{error}</p>}
+          {tab !== 'summary' && loading && !file && <p className="text-sm text-slate-400 inline-flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Loading the client file…</p>}
+
+          {tab === 'summary' && (
+            <>
+              <dl className="grid grid-cols-2 gap-y-3 text-sm">
+                <dt className="text-slate-500">Status</dt><dd><StatusPill status={client.status} /></dd>
+                <dt className="text-slate-500">Risk band</dt><dd>{client.riskBand}</dd>
+                <dt className="text-slate-500">Your reference</dt><dd className="font-mono text-xs">{client.clientRef}</dd>
+                <dt className="text-slate-500">Handle</dt><dd className="font-mono text-xs">{client.handle}</dd>
+                <dt className="text-slate-500">Method</dt><dd>{client.method}</dd>
+                <dt className="text-slate-500">Completed</dt><dd>{fmt(client.completedAt)}</dd>
+              </dl>
+
+              {business && client.people?.length > 0 && (
+                <div className="mt-5">
+                  <h3 className="text-sm font-semibold text-slate-700">People</h3>
+                  <ul className="mt-2 divide-y divide-slate-100 border border-slate-200 rounded-lg">
+                    {client.people.map((x, i) => (
+                      <li key={i} className="px-3 py-2 flex items-center justify-between text-sm">
+                        <span><span className="text-slate-900">{x.name}</span> <span className="text-xs text-slate-500">· {ROLE_LABEL[x.role] || x.role}</span></span>
+                        <StatusPill status={x.status} />
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {client.actions?.length > 0 && (
+                <div className="mt-5">
+                  <h3 className="text-sm font-semibold text-slate-700">Actions</h3>
+                  {client.actions.map((a) => (
+                    <div key={a.code} className="mt-2 text-sm bg-slate-50 rounded-lg p-3">
+                      <p className="text-slate-700">{a.message}</p>
+                      <p className="mt-1 text-xs text-slate-400">{a.owner === 'INTERMEDIARY' ? 'For you to do' : 'With the platform'} · {a.code}</p>
+                      {['PROVIDE_ESTABLISHING_DOCUMENT', 'CHECK_REGISTRATION'].includes(a.code) && (
+                        <div className="mt-2">
+                          <UploadDocument defaultType={ESTABLISHING_FOR[client.businessType] || 'OTHER'}
+                            onUpload={async (body) => { onChanged(await uploadDocument(client.handle, body)); setFile(null); }} />
+                        </div>
+                      )}
+                      {['COLLECT_DOCUMENTS', 'PERSON_DOCUMENTS'].includes(a.code) && (
+                        <button onClick={() => setTab(business ? 'people' : 'documents')} className="mt-2 text-xs underline text-slate-600">Add a document or send an ID verification link</button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="mt-6 flex gap-2">
+                <button onClick={refresh} disabled={!!busy} className="px-3 py-2 rounded-lg border border-slate-300 text-sm inline-flex items-center gap-1.5">
+                  {busy === 'refresh' ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Check status
+                </button>
+                <button onClick={remove} disabled={!!busy} className="px-3 py-2 rounded-lg border border-slate-300 text-sm inline-flex items-center gap-1.5 text-slate-600">
+                  {busy === 'remove' ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserMinus className="w-4 h-4" />} Client has left
+                </button>
+              </div>
+
+              <button onClick={() => setShowJson(!showJson)} className="mt-8 text-xs text-slate-500 inline-flex items-center gap-1.5">
+                <Code2 className="w-4 h-4" /> {showJson ? 'Hide' : 'Show'} the API response
+              </button>
+              {showJson && (
+                <>
+                  <p className="mt-2 text-xs text-slate-500">Everything this intermediary received for this client. No entity ID, no other intermediary, no score, no data source.</p>
+                  <pre className="mt-2 text-[11px] bg-slate-900 text-slate-100 rounded-lg p-3 overflow-x-auto">{JSON.stringify(client, null, 2)}</pre>
+                </>
+              )}
+            </>
+          )}
+
+          {file && tab === 'verifications' && <Verifications items={file.verifications} />}
+          {file && tab === 'risk' && <Risk risk={file.risk} />}
+          {file && tab === 'documents' && (
+            <div className="space-y-4">
+              <UploadDocument defaultType={business ? ESTABLISHING_FOR[client.businessType] || 'OTHER' : 'OTHER'} onUpload={upload} />
+              {!business && <IdvLink who={client.name} onCreate={() => idvLink(client.handle)} />}
+              <Documents items={file.documents} attachmentPath={attachmentPath(null)} />
+            </div>
+          )}
+          {file && tab === 'history' && <History items={file.history} />}
+          {file && tab === 'people' && (
+            <div className="space-y-3">
+              {file.people.map((p) => (
+                <div key={p.personHandle} className="rounded-lg border border-slate-200">
+                  <button onClick={() => setPerson(person === p.personHandle ? null : p.personHandle)} className="w-full px-4 py-3 flex items-center justify-between text-left">
+                    <span><span className="font-medium text-slate-900">{p.name}</span> <span className="text-xs text-slate-500">· {p.role}</span></span>
+                    <span className="flex items-center gap-2"><StatusPill status={p.status} /><span className="text-xs text-slate-400">{person === p.personHandle ? 'Hide' : 'Open'}</span></span>
+                  </button>
+                  {person === p.personHandle && (
+                    <div className="px-4 pb-4 space-y-5 border-t border-slate-100 pt-4">
+                      <section><h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Verifications</h4><Verifications items={p.verifications} /></section>
+                      <section><h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Risk</h4><Risk risk={p.risk} /></section>
+                      <section className="space-y-3">
+                        <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Documents</h4>
+                        <UploadDocument onUpload={async (body) => { onChanged(await uploadDocument(client.handle, { ...body, person: p.personHandle })); await loadFile(); }} />
+                        <IdvLink who={p.name} onCreate={() => idvLink(client.handle, p.personHandle)} />
+                        <Documents items={p.documents} attachmentPath={attachmentPath(p.personHandle)} />
+                      </section>
+                      <section><h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">History</h4><History items={p.history} /></section>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+          {file && tab !== 'summary' && (
+            <p className="mt-6 text-[11px] text-slate-400">
+              This file shows your own verifications, the documents you supplied or collected, and the history of your own checks.
+              If anyone else on the platform also deals with this client, nothing of theirs appears here.
+            </p>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -52,6 +52,23 @@ Clients can be businesses: companies, trusts, partnerships or other organisation
 14. **Kestrel Wealth** → the same trust, again with no ABN. There's no number to match on, so the platform matches the normalised name and postcode. That's never enough to merge on its own, so the trust is held for a decision under **Needs a decision**, side by side.
 15. **Platform operations** → the trust is one organisation record, and James is one record held as Northgate's trustee, as Bluewave's director and (if onboarded directly) as Northgate's own client.
 
+### The client file
+
+Open any client to see its file, read live from FrankieOne:
+
+- **Verifications:** every workflow run, with each check passed or failed and the risk level.
+- **Risk:** the latest risk assessment and the factors behind it.
+- **Documents:** identity documents, uploaded files (bank statements, trust deeds and so on), and the photos and selfie from an ID check, viewable inline.
+- **History:** the audit trail of the checks, plus what the platform did (submitted, documents added, links sent).
+- **Client file (PDF):** prints the whole file. For a business, each person behind it is included.
+
+From the file, an intermediary can **add a document** (attached to the FrankieOne record) or **create an ID verification link**: a one-time hosted OneSDK link for the client to photograph their ID and take a selfie. The photos and results then appear in the file.
+
+**What each side sees.** An intermediary's file is scoped to its own relationship: only its own verification runs, the documents it supplied or collected, risk factors that don't describe someone else's submission, and audit events from its own runs. Risk shows as a level, without scores. If another intermediary also holds the client, nothing of theirs appears. The platform's file (**Client file** on any record in the platform view) shows everything on the record: every run and which intermediary it was for, the duplicate checks, scores, every document and the full audit trail.
+
+16. **Bluewave Brokers** → James → **Documents** → add a bank statement. Then **Northgate Advisers** → James → **Documents**: the bank statement isn't there.
+17. **Platform operations** → James → **Client file**: both intermediaries' runs, attributed, and the bank statement marked as added by Bluewave.
+
 Business onboarding takes at least 25 seconds (`MIN_BUSINESS_RESPONSE_MS`), long enough to cover a register check.
 
 Test people are FrankieOne's [published UAT test identities](https://docs.frankieone.com/docs/uat-test-data). Keep their details exactly as published.
@@ -79,7 +96,11 @@ Test people are FrankieOne's [published UAT test identities](https://docs.franki
 | Business client | `POST /v2/organizations` with the intermediary's reference (the record holds the name, type, address and any ABN or ACN) |
 | People behind it | Each verified as an individual (above), then `PUT /v2/organizations/{entityId}/relationships` with their role |
 | ABN or ACN supplied | `POST /v2/organizations/{entityId}/serviceprofiles/{service}/workflows/{BUSINESS_WORKFLOW}/execute`, then polling `GET .../executions/{executionId}` for the register result |
-| No ABN or ACN | No register call. The intermediary is asked for the establishing document (trust deed, partnership agreement), which in production is attached with `POST /v2/organizations/{entityId}/documents` |
+| Client file | `GET /v2/{individuals\|organizations}/{entityId}/serviceprofiles/{service}` (latest risk assessment), `GET .../workflows/{workflow}/executions` (every run, per workflow), `GET /v2/{individuals\|organizations}/{entityId}/documents`, `GET /v2/audit?entityId=` |
+| View a photo or file | `GET /v2/{individuals\|organizations}/{entityId}/documents/{documentId}?level=base64`, streamed through the platform after checking the document is in that intermediary's file |
+| Add a document | `POST /v2/{individuals\|organizations}/{entityId}/documents` with the file as an attachment |
+| ID verification link | `POST /v2/individuals/hostedUrl` with the OneSDK flow (`IDV_FLOW`) |
+| No ABN or ACN | No register call. The intermediary is asked for the establishing document (trust deed, partnership agreement), attached with `POST /v2/organizations/{entityId}/documents` |
 
 ## What the platform layer does
 
@@ -94,6 +115,7 @@ All in `server/`:
 | Outcome mapping | `tier1.mjs` | Workflow results become `VERIFIED`, `IN_REVIEW`, `ACTION_REQUIRED` or `DECLINED`, with a risk band rather than a score, and neutral messages |
 | Duplicate check and merge engine | `tier1.mjs` | Runs FrankieOne's duplicate check on every record the platform creates; merges automatically only on an identity document and exact date of birth with a single candidate; otherwise holds it for compliance. Every merge records its reason and can be reversed. Handles never change through a merge |
 | Probing controls | `tier1.mjs` | Consent required per submission, a rate limit per intermediary, a minimum response time, and a record of every submission's outcome |
+| Client file | `clientfile.mjs` | Builds the file from FrankieOne's runs, risk, documents and audit trail. Attributes each run to the relationship it was for, and scopes the intermediary's version to its own runs and documents |
 | Request queue | `queue.mjs` | A cap on concurrent FrankieOne calls, round robin between intermediaries, one investor at a time, and retry on a rate-limit response |
 | Relationship store and disclosure log | `store.mjs` | Which intermediary holds which investor, and what each was shown and when |
 | FrankieOne client | `frankie.mjs` | The only code with the API key |
@@ -107,6 +129,7 @@ Policies (minimum response time, rate limit, reuse window, concurrency, automati
 - **Reuse window**: whether checks already held satisfy a new onboarding is set in FrankieOne's workflow configuration. The example runs each intermediary's workflow; it doesn't decide reuse itself.
 - **The duplicate check** runs as its own workflow (`DUPLICATE_WORKFLOW`) when the platform creates a record, before the intermediary's own workflow. On a dedicated account it can equally be a step inside each intermediary's workflow.
 - **Shared demo account**: the demo account holds many copies of the same UAT test people from other demos, and FrankieOne's duplicate check matches them all. With `SHARED_DEMO_ACCOUNT=true` (the default), matches against records that aren't the platform's are set aside. On a dedicated account, set it to `false`: every record is the platform's, so every match is a candidate.
+- **FrankieOne's PDF audit report** for an individual is generated in the FrankieOne Portal. The **Client file (PDF)** here is the platform's own report, built from the same data, so it can be scoped per intermediary.
 - **The start page** hands out intermediary tokens so a presenter can switch between them. In production, tokens are issued privately and the platform view sits behind staff sign-in on a separate host.
 
-Not built yet, but covered by the same design: uploading the establishing document itself, an intermediary updating a client's details, routing ongoing monitoring alerts to every intermediary holding a person, a network blocklist, and intermediaries who supply their own KYC under reliance.
+Not built yet, but covered by the same design: an intermediary updating a client's details, routing ongoing monitoring alerts to every intermediary holding a person, a network blocklist, and intermediaries who supply their own KYC under reliance.

@@ -14,6 +14,7 @@ import crypto from 'node:crypto';
 import { BUSINESS_WORKFLOW, DUPLICATE_WORKFLOW, INTERMEDIARIES, PERMITTED_FIELDS, PERMITTED_PERSON_FIELDS, POLICY, ROLES, SECRET, byId, refName } from './config.mjs';
 import * as frankie from './frankie.mjs';
 import { store } from './store.mjs';
+import { addClientDocument } from './clientfile.mjs';
 import { schedule } from './queue.mjs';
 
 const hmac = (purpose, value) => crypto.createHmac('sha256', `${SECRET}:${purpose}`).update(value).digest();
@@ -509,16 +510,26 @@ export async function onboardBusiness(intermediary, body) {
   return heldTo(POLICY.minBusinessResponseMs, started, respond(biz, 'onboard'));
 }
 
-/** The intermediary has provided the document that establishes a business with no ABN or ACN. */
+/**
+ * The intermediary adds a document to a client's file: any client, or one
+ * person behind a business. The file is attached to the FrankieOne record.
+ * For a business with no ABN or ACN, a trust deed, partnership agreement or
+ * constitution satisfies the establishing-document requirement.
+ */
+const ESTABLISHING = new Set(['TRUST_DEED', 'PARTNERSHIP_AGREEMENT', 'CONSTITUTION', 'CERTIFICATE_OF_REGISTRATION', 'OTHER']);
 export async function provideDocument(intermediary, handle, body) {
-  const biz = store.find(intermediary.id, handle);
-  if (!biz || biz.kind !== 'business') throw new ClientError(404, 'NOT_FOUND', 'No such business client.');
-  biz.establishingDocument = { type: body?.type || 'Establishing document', at: new Date().toISOString() };
-  store.update(biz, businessOutcome(biz));
-  const log = tracer(intermediary, biz.clientRef, `${intermediary.name} provided a document for ${biz.name}`);
-  log.step(`Recorded "${biz.establishingDocument.type}" against business record ${short(biz.entityId)}. In production the file is attached to the record (POST /v2/organizations/{id}/documents) for compliance to review.`);
-  log.done(`${intermediary.name} sees ${STATUS_LABEL[biz.status]}`);
-  return respond(biz, 'document');
+  const client = store.find(intermediary.id, handle);
+  if (!client || client.kind === 'related') throw new ClientError(404, 'NOT_FOUND', 'No such client.');
+  const { documentId, label, rel } = await addClientDocument(intermediary, client, body || {});
+  const log = tracer(intermediary, client.clientRef, `${intermediary.name} added a document for ${rel.name}`);
+  log.step(`FrankieOne: attached ${label.toLowerCase()} to ${rel.kind === 'business' ? 'business' : 'person'} record ${short(rel.entityId)} (document ${short(documentId)}).`, 'frankieone');
+  if (client.kind === 'business' && !body?.person && ESTABLISHING.has(String(body?.type || 'OTHER').toUpperCase())) {
+    client.establishingDocument = { type: label, documentId, at: new Date().toISOString() };
+    store.update(client, businessOutcome(client));
+    log.step('That satisfies the establishing-document requirement for a business with no ABN or ACN.');
+  }
+  log.done(`${intermediary.name} sees ${STATUS_LABEL[client.status]}`);
+  return respond(client, 'document');
 }
 
 // ── compliance decisions (the platform's own staff, never intermediaries) ──
