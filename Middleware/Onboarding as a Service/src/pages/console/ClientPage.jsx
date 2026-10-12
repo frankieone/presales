@@ -35,6 +35,7 @@ export default function ClientPage() {
   const business = client.kind === 'BUSINESS';
   const subject = person && file ? file.people.find((p) => p.personHandle === person) : null;
   const view = subject || file;
+  const target = subject ? subject.name : client.name;
 
   const changed = async (c) => { if (c) setClient(c); reload(); await loadFile(); };
   const refresh = async () => {
@@ -153,29 +154,33 @@ export default function ClientPage() {
           {tab === 'verifications' && (business && !subject && !view.verifications.length
             ? <p className="px-5 py-6 text-[13px] text-slate-500">Each person behind the business is verified individually. Choose someone under People.</p>
             : <Verifications key={`${person || 'main'}-${focus}`} focus={focus} items={view.verifications} />)}
-          {tab === 'documents' && <Documents items={view.documents} attachmentPath={attachmentPath} />}
+          {tab === 'documents' && (
+            <>
+              <div className="h-12 px-5 border-b border-slate-100 flex items-center justify-end gap-2">
+                {(!business || subject) && (
+                  <Menu width="w-80" label={<><Smartphone className="w-4 h-4" /> ID check link</>}>
+                    <div className="p-2"><IdvLink key={target} who={target} onCreate={() => idvLink(handle, subject?.personHandle)} /></div>
+                  </Menu>
+                )}
+                <Menu width="w-72" label={<><Upload className="w-4 h-4" /> Upload</>}>
+                  <div className="p-2"><p className="mb-2 text-[12px] text-slate-500">Add a document for {target}</p><UploadDocument onUpload={upload} /></div>
+                </Menu>
+              </div>
+              <Documents items={view.documents} attachmentPath={attachmentPath} />
+            </>
+          )}
           {tab === 'risk' && <Risk risk={view.risk} />}
         </>
       )}
     </>
   );
 
-  const target = subject ? subject.name : client.name;
   return (
     <>
       <TopBar crumbs={[{ label: 'Clients', to: '/console' }, { label: client.name }]} actions={<>
-        <Menu width="w-72" label={<><Upload className="w-4 h-4" /> Upload</>}>
-          <div className="p-2"><p className="mb-2 text-[12px] text-slate-500">Add a document for {target}</p><UploadDocument onUpload={upload} /></div>
-        </Menu>
-        {(!business || subject) && (
-          <Menu width="w-80" label={<><Smartphone className="w-4 h-4" /> ID check</>}>
-            <div className="p-2"><IdvLink key={target} who={target} onCreate={() => idvLink(handle, subject?.personHandle)} /></div>
-          </Menu>
-        )}
-        <button onClick={refresh} disabled={!!busy} className={btn.secondary}>
-          {busy === 'refresh' ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Check status
-        </button>
+        {busy === 'refresh' && <span className="text-[13px] text-slate-500 inline-flex items-center gap-1.5"><Loader2 className="w-4 h-4 animate-spin" /> Checking status…</span>}
         <Menu className={btn.ghost} label={<MoreHorizontal className="w-4 h-4" />}>
+          <button data-close disabled={!!busy} onClick={refresh} className={menuItem}><RefreshCw className="w-4 h-4" /> Check status</button>
           <button data-close disabled={!file} onClick={() => printFile(file, { title: `Client file: ${client.name}`, subtitle: `${im.name} · reference ${client.clientRef}` })} className={menuItem}><Download className="w-4 h-4" /> Download client file (PDF)</button>
           <button data-close onClick={remove} className={`${menuItem} text-red-700`}><UserMinus className="w-4 h-4" /> Client has left</button>
         </Menu>
