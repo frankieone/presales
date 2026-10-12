@@ -3,7 +3,7 @@ import { useNavigate, useOutletContext, useParams } from 'react-router-dom';
 import { Download, Loader2, MoreHorizontal, RefreshCw, Smartphone, Upload, UserMinus, X } from 'lucide-react';
 import { getClient, getClientFile, idvLink, removeClient, uploadDocument } from '../../api';
 import { Attributes, Avatar, Loading, Menu, Panel, RecordLayout, StatusPill, Tabs, TopBar, btn, fmtDateTime, menuItem } from '../../components/ui';
-import { Documents, History, IdvLink, RecordSummary, Risk, UploadDocument, Verifications, printFile } from '../../components/ClientFile';
+import { Documents, History, IdvLink, RecordSummary, Risk, UploadDocument, Verifications, printFile, seen } from '../../components/ClientFile';
 import { subtitle } from './Clients';
 
 const ESTABLISHING_FOR = { Trust: 'TRUST_DEED', Partnership: 'PARTNERSHIP_AGREEMENT', Company: 'CERTIFICATE_OF_REGISTRATION', 'Other organisation': 'CONSTITUTION' };
@@ -73,9 +73,9 @@ export default function ClientPage() {
       <Panel title="Details">
         <Attributes rows={[
           ['Reference', <span key="r" className="font-mono">{client.clientRef}</span>],
-          ['Handle', <span key="h" className="font-mono text-slate-600">{client.handle}</span>],
-          ['Method', client.method],
-          ['Onboarded', fmtDateTime(client.createdAt)],
+          (subject || file)?.entityId && ['FrankieOne ID', <span key="e" className="font-mono text-[12px] text-slate-600 break-all">{(subject || file).entityId}</span>],
+          ['First seen', fmtDateTime(seen(summary?.verifications).first)],
+          ['Last seen', fmtDateTime(seen(summary?.verifications).last)],
         ]} />
       </Panel>
     </>

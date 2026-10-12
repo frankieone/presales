@@ -54,6 +54,8 @@ Clients can be businesses: companies, trusts, partnerships or other organisation
 
 ### The client file
 
+A client's **Activity** merges two sources: FrankieOne's audit trail (`GET /v2/audit?entityId=`), filtered to that intermediary's own workflow runs and cut down to key events, and the platform's own events (submitted, status set, documents added, ID check links sent). **First seen** and **Last seen** come from the first and latest FrankieOne workflow run.
+
 Open any client to see its file, read live from FrankieOne:
 
 - **Verifications:** every workflow run, with each check passed or failed and the risk level.
@@ -64,7 +66,7 @@ Open any client to see its file, read live from FrankieOne:
 
 From the file, an intermediary can **add a document** (attached to the FrankieOne record) or **create an ID verification link**: a one-time hosted OneSDK link for the client to photograph their ID and take a selfie. The photos and results then appear in the file.
 
-**What each side sees.** An intermediary's file is scoped to its own relationship: only its own verification runs, the documents it supplied or collected, risk factors that don't describe someone else's submission, and audit events from its own runs. Risk shows as a level and the score from its own runs (set `SHARE_RISK_SCORE=false` to show the level only). If another intermediary also holds the client, nothing of theirs appears. The platform's file (any record under **Records**) shows everything on the record: every run and which intermediary it was for, the duplicate checks, scores, every document and the full audit trail.
+**What each side sees.** An intermediary's file is scoped to its own relationship: only its own verification runs, the documents it supplied or collected, risk factors that don't describe someone else's submission, and audit events from its own runs. Risk shows as a level and the score from its own runs (set `SHARE_RISK_SCORE=false` to show the level only). The file also shows the FrankieOne entity ID. It's the same for every intermediary holding a client, so two intermediaries comparing IDs could tell they share one: set `SHARE_ENTITY_ID=false` where that matters. If another intermediary also holds the client, nothing of theirs appears. The platform's file (any record under **Records**) shows everything on the record: every run and which intermediary it was for, the duplicate checks, scores, every document and the full audit trail.
 
 16. **Bluewave Brokers** → James → **Documents** → add a bank statement. Then **Northgate Advisers** → James → **Documents**: the bank statement isn't there.
 17. **Platform operations** → **Records** → James → **Verifications** and **Documents**: both intermediaries' runs, attributed, and the bank statement marked as added by Bluewave.

@@ -221,6 +221,12 @@ function Screenings({ runs, people }) {
   );
 }
 
+/** First and last FrankieOne workflow run, from the runs in view. */
+export function seen(runs) {
+  const times = (runs || []).flatMap((v) => [v.startedAt, v.endedAt]).filter(Boolean).sort();
+  return { first: times[0] || null, last: times.at(-1) || null };
+}
+
 /**
  * The side-panel summary of a record: current risk, the latest workflow's
  * result, and the earlier runs. Clicking a run opens it in the main column.

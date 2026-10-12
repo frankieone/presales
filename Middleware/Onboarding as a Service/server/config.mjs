@@ -66,6 +66,9 @@ export const POLICY = {
   sharedDemoAccount: setting('SHARED_DEMO_ACCOUNT', 'true') !== 'false',
   // Whether an intermediary sees the risk score from its own verifications, or the level only.
   shareRiskScore: setting('SHARE_RISK_SCORE', 'true') !== 'false',
+  // Whether an intermediary sees the FrankieOne entity ID. It's the same for every intermediary
+  // holding a client, so two intermediaries comparing IDs could tell they share one. Off hides it.
+  shareEntityId: setting('SHARE_ENTITY_ID', 'true') !== 'false',
 };
 
 /**

@@ -3,7 +3,7 @@ import { useOutletContext, useParams } from 'react-router-dom';
 import { Download, MoreHorizontal } from 'lucide-react';
 import { forgetIndex, getEntityFile } from '../../api';
 import { Attributes, Avatar, Badge, Loading, Menu, Panel, RecordLayout, StatusPill, Tabs, TopBar, fmtDateTime, menuItem, btn } from '../../components/ui';
-import { Documents, History, RecordSummary, Risk, Verifications, printFile } from '../../components/ClientFile';
+import { Documents, History, RecordSummary, Risk, Verifications, printFile, seen } from '../../components/ClientFile';
 
 const how = (r) => (r.removedAt ? ['Left', 'slate'] : r.reviewId ? ['Possible duplicate', 'amber'] : r.mergedFrom ? ['Merged in', 'violet']
   : r.reusedRecord ? ['Record already held', 'blue'] : ['New to the network', 'green']);
@@ -34,14 +34,15 @@ export default function Record() {
       <div className="px-5 py-5 border-b border-slate-200">
         <Avatar name={inv.name} kind={inv.entityType} size="lg" />
         <h1 className="mt-3 text-[18px] font-semibold leading-snug text-slate-900">{inv.name}</h1>
-        <p className="mt-0.5 text-[13px] text-slate-500">{org ? `${inv.businessType} · ${inv.registration || 'no ABN or ACN'}` : `Born ${inv.dateOfBirth}`}</p>
+        <p className="mt-0.5 text-[13px] text-slate-500">{org ? `${inv.businessType} · ${inv.registration || 'no ABN or ACN'}` : 'Individual'}</p>
       </div>
       <RecordSummary file={file} full onOpenRun={(ref) => { setFocus(ref); setTab('verifications'); }} />
       <Panel title="Details">
         <Attributes rows={[
-          ['State', file?.state || '—'],
-          ['First onboarded', fmtDateTime(inv.relationships.map((r) => r.createdAt).sort()[0])],
           ['FrankieOne ID', <span key="id" className="font-mono text-[12px] text-slate-600 break-all">{entityId}</span>],
+          ['State', file?.state || '—'],
+          ['First seen', fmtDateTime(seen(file?.verifications).first)],
+          ['Last seen', fmtDateTime(seen(file?.verifications).last)],
         ]} />
       </Panel>
       {note && <Panel><p className="text-[13px] text-green-700">{note}</p></Panel>}

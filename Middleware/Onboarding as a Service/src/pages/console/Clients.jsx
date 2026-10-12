@@ -5,7 +5,7 @@ import { Avatar, Empty, ListToolbar, Loading, StatusPill, TopBar, ago, btn, td, 
 
 export const subtitle = (c) => (c.kind === 'BUSINESS'
   ? `${c.businessType || 'Business'} · ${c.people?.length || 0} ${c.people?.length === 1 ? 'person' : 'people'}`
-  : `Born ${c.dateOfBirth}`);
+  : 'Individual');
 
 export default function Clients() {
   const { im, clients, reload } = useOutletContext();

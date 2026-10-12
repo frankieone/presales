@@ -230,12 +230,13 @@ const peopleOf = (biz) => store.allRelationships().filter((r) => r.kind === 'rel
 export async function intermediaryFile(intermediary, handle) {
   const rel = findClient(intermediary, handle);
   store.disclose(intermediary.id, handle, ['verifications', 'risk', 'documents', 'history'], 'file');
-  if (rel.kind !== 'business') return { kind: 'INDIVIDUAL', handle, name: rel.name, ...(await scopedFile(rel, 'INDIVIDUAL')) };
+  const id = (r) => (POLICY.shareEntityId ? { entityId: r.entityId } : {});
+  if (rel.kind !== 'business') return { kind: 'INDIVIDUAL', handle, name: rel.name, ...id(rel), ...(await scopedFile(rel, 'INDIVIDUAL')) };
   const [own, people] = await Promise.all([
     scopedFile(rel, 'ORGANIZATION'),
-    Promise.all(peopleOf(rel).map(async (p) => ({ personHandle: p.handle, name: p.name, role: p.roleLabel, status: p.status, ...(await scopedFile(p, 'INDIVIDUAL')) }))),
+    Promise.all(peopleOf(rel).map(async (p) => ({ personHandle: p.handle, name: p.name, role: p.roleLabel, status: p.status, ...id(p), ...(await scopedFile(p, 'INDIVIDUAL')) }))),
   ]);
-  return { kind: 'BUSINESS', handle, name: rel.name, ...own, people };
+  return { kind: 'BUSINESS', handle, name: rel.name, ...id(rel), ...own, people };
 }
 
 /** Stream one attachment, after checking the document is in this intermediary's file. */
