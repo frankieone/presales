@@ -69,7 +69,7 @@ export default function ClientPage() {
         <p className="mt-0.5 text-[13px] text-slate-500">{subtitle(client)}</p>
         <div className="mt-3"><StatusPill status={client.status} /></div>
       </div>
-      <RecordSummary file={summary} onOpenRun={openRun} />
+      <RecordSummary file={summary} onOpenRun={openRun} people={business && !subject ? file?.people : undefined} />
       <Panel title="Details">
         <Attributes rows={[
           ['Reference', <span key="r" className="font-mono">{client.clientRef}</span>],

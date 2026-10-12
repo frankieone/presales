@@ -66,7 +66,7 @@ function checks(w) {
       if (HIDDEN_STEPS.has(s)) continue;
       // A photo ID step that didn't run (no photo taken) in a run that passed on electronic checks wasn't needed.
       const notDone = s === 'IDV' && label === 'Failed' && w.status === 'PASS';
-      list.push({ check: notDone ? 'Photo ID check' : CHECKS[s] || s.replace(/_/g, ' ').toLowerCase(), result: notDone ? 'Not done' : label });
+      list.push({ step: s, check: notDone ? 'Photo ID check' : CHECKS[s] || s.replace(/_/g, ' ').toLowerCase(), result: notDone ? 'Not done' : label });
     }
   }
   return list;

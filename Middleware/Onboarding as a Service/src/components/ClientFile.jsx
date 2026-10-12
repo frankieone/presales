@@ -171,11 +171,62 @@ export function History({ items, full }) {
   );
 }
 
+// What counts as each screening, from a run's checks. Only a passed check counts.
+const SCREENINGS = [
+  ['AML screening', (c) => c.step === 'AML'],
+  ['KYC screening', (c) => c.step === 'KYC'],
+  // A selfie match, or a photo ID check from a hosted ID check run (document photo and selfie).
+  ['Biometrics / selfie', (c, v) => c.step === 'BIOMETRICS' || (c.step === 'IDV' && v.kind.startsWith('ID verification'))],
+];
+const YEAR = 365 * 24 * 3600 * 1000;
+
+/** The most recent passed date for each screening within the last 12 months, or null. */
+export function screenings(runs) {
+  return SCREENINGS.map(([label, match]) => {
+    const passed = (runs || [])
+      .filter((v) => Date.now() - Date.parse(v.startedAt) <= YEAR)
+      .filter((v) => v.checks.some((c) => c.result === 'Passed' && match(c, v)))
+      .map((v) => v.endedAt || v.startedAt)
+      .sort().at(-1) || null;
+    return { label, passed };
+  });
+}
+
+/**
+ * Yes/No for each screening in the last 12 months. `people` (for a business)
+ * makes it Yes only when every person has it; the hover lists each person.
+ */
+function Screenings({ runs, people }) {
+  const rows = people
+    ? SCREENINGS.map(([label], i) => {
+        const each = people.map((p) => ({ name: p.name, passed: screenings(p.verifications)[i].passed }));
+        return { label, yes: each.length > 0 && each.every((x) => x.passed), tip: each.map((x) => `${x.name}: ${x.passed ? fmtDate(x.passed) : 'none'}`) };
+      })
+    : screenings(runs).map((r) => ({ label: r.label, yes: !!r.passed, tip: [r.passed ? `Passed ${fmtDateTime(r.passed)}` : 'No passed check in the last 12 months'] }));
+  return (
+    <Panel title="Last 12 months">
+      <ul className="space-y-2">
+        {rows.map((r) => (
+          <li key={r.label} className="group relative flex items-center justify-between gap-3">
+            <span className="text-[13px] text-slate-600">{r.label}</span>
+            <span className={`inline-flex items-center gap-1 h-[22px] px-2 rounded-md text-[12px] font-medium cursor-default ${r.yes ? 'bg-green-50 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
+              {r.yes ? <Check className="w-3.5 h-3.5" /> : null}{r.yes ? 'Yes' : 'No'}
+            </span>
+            <span className="pointer-events-none absolute right-0 top-full mt-1 z-20 hidden group-hover:block whitespace-nowrap rounded-md bg-slate-900 text-white text-[12px] px-2.5 py-1.5 shadow-lg">
+              {r.tip.map((t) => <span key={t} className="block">{t}</span>)}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </Panel>
+  );
+}
+
 /**
  * The side-panel summary of a record: current risk, the latest workflow's
  * result, and the earlier runs. Clicking a run opens it in the main column.
  */
-export function RecordSummary({ file, full, onOpenRun }) {
+export function RecordSummary({ file, full, onOpenRun, people }) {
   if (!file) return <Panel title="Risk"><p className="text-[13px] text-slate-400">Loading…</p></Panel>;
   const runs = (file.verifications || []).filter((v) => !v.monitoring);
   const [latest, ...previous] = runs;
@@ -198,6 +249,7 @@ export function RecordSummary({ file, full, onOpenRun }) {
           </div>
         ) : <p className="text-[13px] text-slate-500">Not assessed yet.</p>}
       </Panel>
+      <Screenings runs={runs} people={people} />
       <Panel title="Latest workflow">
         {latest ? (
           <button onClick={() => onOpenRun?.(latest.ref)} className="w-full text-left">
