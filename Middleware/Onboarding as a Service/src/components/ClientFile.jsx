@@ -35,7 +35,7 @@ export function Verifications({ items, full, focus }) {
           <div key={v.ref}>
             <button onClick={() => toggle(v.ref)} className="w-full px-5 h-12 flex items-center gap-3 text-left hover:bg-slate-50">
               <ChevronRight className={`w-4 h-4 text-slate-400 shrink-0 transition ${isOpen ? 'rotate-90' : ''}`} />
-              <span className="text-[13px] font-medium text-slate-900 truncate">{v.kind}{v.monitoring ? ' (monitoring)' : ''}</span>
+              <span className="text-[13px] font-medium text-slate-900 truncate">{v.workflow}{v.monitoring ? ' (monitoring)' : ''}</span>
               {full && v.for && <span className="text-[13px] text-slate-500 truncate">for {v.for}</span>}
               <span className="ml-auto flex items-center gap-3 shrink-0">
                 {v.riskLevel && <span className={`text-[12px] ${RISK_TEXT[v.riskLevel] || 'text-slate-500'}`}>{v.riskLevel}{v.riskScore != null ? ` · ${v.riskScore}` : ''}</span>}
@@ -45,7 +45,6 @@ export function Verifications({ items, full, focus }) {
             </button>
             {isOpen && (
               <div className="pl-12 pr-5 pb-4 -mt-1">
-                {full && v.workflow && <p className="mb-2 text-[12px] font-mono text-slate-400">{v.workflow}</p>}
                 <ul className="grid sm:grid-cols-2 gap-x-6 gap-y-1.5">
                   {v.checks.map((c, i) => (
                     <li key={i} className={`flex items-start gap-2 text-[13px] ${c.result === 'Not done' ? 'text-slate-400' : 'text-slate-700'}`}>
@@ -176,7 +175,7 @@ const SCREENINGS = [
   ['AML screening', (c) => c.step === 'AML'],
   ['KYC screening', (c) => c.step === 'KYC'],
   // A selfie match, or a photo ID check from a hosted ID check run (document photo and selfie).
-  ['Biometrics / selfie', (c, v) => c.step === 'BIOMETRICS' || (c.step === 'IDV' && v.kind.startsWith('ID verification'))],
+  ['Biometrics / selfie', (c, v) => c.step === 'BIOMETRICS' || (c.step === 'IDV' && v.photoId)],
 ];
 const YEAR = 365 * 24 * 3600 * 1000;
 
@@ -254,15 +253,10 @@ export function RecordSummary({ file, full, onOpenRun, people }) {
         {latest ? (
           <button onClick={() => onOpenRun?.(latest.ref)} className="w-full text-left">
             <div className="flex items-center justify-between gap-2">
-              <span className="text-[13px] font-medium text-slate-900 truncate">{latest.kind}</span>
+              <span className="text-[13px] font-medium text-slate-900 truncate">{latest.workflow}</span>
               <Result value={latest.result} />
             </div>
             <p className="mt-1 text-[12px] text-slate-500">{fmtDateTime(latest.startedAt)}{latest.for ? ` · ${full ? 'for ' : ''}${latest.for}` : ''}</p>
-            <ul className="mt-2.5 space-y-1">
-              {latest.checks.filter((c) => c.result !== 'Not done').map((c, i) => (
-                <li key={i} className="flex items-start gap-2 text-[12px] text-slate-600"><CheckIcon result={c.result} /><span>{c.check}</span></li>
-              ))}
-            </ul>
           </button>
         ) : <p className="text-[13px] text-slate-500">No workflow has run yet.</p>}
       </Panel>
@@ -273,7 +267,7 @@ export function RecordSummary({ file, full, onOpenRun, people }) {
               <li key={v.ref}>
                 <button onClick={() => onOpenRun?.(v.ref)} className="w-full px-2 py-1.5 rounded-md flex items-center gap-2 text-left hover:bg-slate-50">
                   <span className="min-w-0 flex-1">
-                    <span className="block text-[13px] text-slate-800 truncate">{v.kind}</span>
+                    <span className="block text-[13px] text-slate-800 truncate">{v.workflow}</span>
                     <span className="block text-[12px] text-slate-500 truncate">{fmtDate(v.startedAt)}{v.for ? ` · ${v.for}` : ''}</span>
                   </span>
                   <Result value={v.result} />
@@ -370,11 +364,11 @@ export function IdvLink({ who, onCreate }) {
 const esc = (v) => String(v ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 function printSections(f, full) {
-  const v = (f.verifications || []).map((x) => `<tr><td>${esc(fmt(x.startedAt))}</td><td>${esc(x.kind)}${full && x.for ? `<br><small>for ${esc(x.for)}</small>` : ''}</td><td>${esc(x.result)}</td><td>${esc(x.riskLevel || '')}</td><td>${x.checks.map((c) => `${esc(c.result)}: ${esc(c.check)}`).join('<br>')}</td></tr>`).join('');
+  const v = (f.verifications || []).map((x) => `<tr><td>${esc(fmt(x.startedAt))}</td><td>${esc(x.workflow)}${full && x.for ? `<br><small>for ${esc(x.for)}</small>` : ''}</td><td>${esc(x.result)}</td><td>${esc(x.riskLevel || '')}</td><td>${x.checks.map((c) => `${esc(c.result)}: ${esc(c.check)}`).join('<br>')}</td></tr>`).join('');
   const r = f.risk ? `<p><b>${esc(f.risk.level)}</b> risk, assessed ${esc(fmt(f.risk.assessedAt))}</p><table><tr><th>Factor</th><th>Value</th>${full ? '<th>Score</th>' : ''}</tr>${f.risk.factors.map((x) => `<tr><td>${esc(x.factor)}</td><td>${esc(x.value)}</td>${full ? `<td>${esc(x.score)}</td>` : ''}</tr>`).join('')}</table>` : '<p>No risk assessment yet.</p>';
   const d = (f.documents || []).map((x) => `<tr><td>${esc(x.type)}</td><td>${esc(x.number || '')}</td><td>${esc(x.class || '')}</td><td>${esc(fmt(x.addedAt))}</td><td>${x.attachments.length}</td></tr>`).join('');
   const h = (f.history || []).map((x) => `<tr><td>${esc(fmt(x.at))}</td><td>${esc(x.source === 'Platform' ? 'Platform' : 'FrankieOne')}</td><td>${esc(x.text)}${x.result ? ` (${esc(x.result)})` : ''}${full && x.for ? `<br><small>for ${esc(x.for)}</small>` : ''}</td></tr>`).join('');
-  return `<h2>Verifications</h2>${v ? `<table><tr><th>Date</th><th>Verification</th><th>Result</th><th>Risk</th><th>Checks</th></tr>${v}</table>` : '<p>None.</p>'}
+  return `<h2>Verifications</h2>${v ? `<table><tr><th>Date</th><th>Workflow</th><th>Result</th><th>Risk</th><th>Checks</th></tr>${v}</table>` : '<p>None.</p>'}
     <h2>Risk assessment</h2>${r}
     <h2>Documents</h2>${d ? `<table><tr><th>Document</th><th>Number</th><th>Class</th><th>Added</th><th>Files</th></tr>${d}</table>` : '<p>None.</p>'}
     <h2>History</h2>${h ? `<table><tr><th>When</th><th>Source</th><th>Event</th></tr>${h}</table>` : '<p>None.</p>'}`;

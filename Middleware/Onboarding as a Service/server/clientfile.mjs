@@ -140,8 +140,9 @@ async function loadRecord(entityId, entityType) {
 
 const verification = (w, scores) => ({
   ref: w.workflowExecutionId,
-  kind: workflowKind(w.workflowName),
-  ...(scores ? { workflow: w.workflowName } : {}),
+  workflow: w.workflowName,
+  // A hosted ID check run (document photo and selfie), so its photo ID step counts as biometrics.
+  photoId: workflowKind(w.workflowName).startsWith('ID verification'),
   startedAt: w.startedAt, endedAt: w.endedAt,
   result: RESULT[w.status] || w.status || 'In progress',
   monitoring: w.lifecyclePhase === 'MONITORING',
