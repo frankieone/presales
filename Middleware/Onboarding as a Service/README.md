@@ -54,7 +54,7 @@ Clients can be businesses: companies, trusts, partnerships or other organisation
 
 ### The client file
 
-A client's **Activity** merges two sources: FrankieOne's audit trail (`GET /v2/audit?entityId=`), filtered to that intermediary's own workflow runs and cut down to key events, and the platform's own events (submitted, status set, documents added, ID check links sent). **First seen** and **Last seen** come from the first and latest FrankieOne workflow run.
+A client's **Activity** is its story: every workflow run and its result, each risk assessment, comments left on the record, and documents added. Comments are posted with `POST /v2/comments` (the intermediary as the author) and read back from the audit log, where FrankieOne records them. An intermediary sees only its own comments; the platform sees everyone's. The **Audit** tab has the step-by-step detail: FrankieOne's audit trail (`GET /v2/audit?entityId=`), filtered to that intermediary's runs, plus the platform's own events. **First seen** and **Last seen** come from the first and latest FrankieOne workflow run. The reference and FrankieOne ID copy to the clipboard with one click.
 
 Open any client to see its file, read live from FrankieOne:
 
@@ -102,6 +102,7 @@ Test people are FrankieOne's [published UAT test identities](https://docs.franki
 | View a photo or file | `GET /v2/{individuals\|organizations}/{entityId}/documents/{documentId}?level=base64`, streamed through the platform after checking the document is in that intermediary's file |
 | Add a document | `POST /v2/{individuals\|organizations}/{entityId}/documents` with the file as an attachment |
 | ID verification link | `POST /v2/individuals/hostedUrl` with the OneSDK flow (`IDV_FLOW`) |
+| Comment | `POST /v2/comments`, with `X-Frankie-Username` naming the author; read back from `GET /v2/audit` |
 | No ABN or ACN | No register call. The intermediary is asked for the establishing document (trust deed, partnership agreement), attached with `POST /v2/organizations/{entityId}/documents` |
 
 ## What the platform layer does

@@ -37,6 +37,7 @@ export const submitClient = (body) => call('POST', '/api/v1/clients', body);
 export const provideDocument = (handle, type) => call('POST', `/api/v1/clients/${handle}/documents`, { type });
 export const getClientFile = (handle) => call('GET', `/api/v1/clients/${handle}/file`);
 export const uploadDocument = (handle, body) => call('POST', `/api/v1/clients/${handle}/documents`, body);
+export const addComment = (handle, text, person) => call('POST', `/api/v1/clients/${handle}/comments`, { text, person });
 export const idvLink = (handle, person) => call('POST', `/api/v1/clients/${handle}/idv-link`, { person });
 export const removeClient = (handle) => call('DELETE', `/api/v1/clients/${handle}`);
 
@@ -46,6 +47,7 @@ export const resetDemo = () => call('POST', '/internal/reset');
 export const decideReview = (id, decision, entityId) => call('POST', `/internal/reviews/${id}`, { decision, entityId });
 export const reverseMerge = (id) => call('POST', `/internal/merges/${id}/reverse`);
 export const getEntityFile = (entityId) => call('GET', `/internal/entities/${entityId}/file`);
+export const addEntityComment = (entityId, text) => call('POST', `/internal/entities/${entityId}/comments`, { text });
 export const forgetIndex = (entityId) => call('POST', '/internal/forget', { entityId });
 
 /** A document's file (photo, scan, PDF), fetched with the signed-in token, as a local object URL. */

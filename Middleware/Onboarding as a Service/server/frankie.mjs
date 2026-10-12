@@ -6,20 +6,21 @@
  */
 import { FRANKIE } from './config.mjs';
 
-function headers(channel) {
+function headers(channel, username) {
   return {
     'Content-Type': 'application/json',
     'X-Frankie-CustomerID': FRANKIE.customerId,
     api_key: FRANKIE.apiKey,
     ...(FRANKIE.customerChildId ? { 'X-Frankie-CustomerChildID': FRANKIE.customerChildId } : {}),
     ...(channel ? { 'X-Frankie-Channel': channel } : {}),
+    ...(username ? { 'X-Frankie-Username': username } : {}),
   };
 }
 
-async function call(method, path, body, channel) {
+async function call(method, path, body, channel, username) {
   const res = await fetch(`${FRANKIE.server}${path}`, {
     method,
-    headers: headers(channel),
+    headers: headers(channel, username),
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   });
   const text = await res.text();
@@ -128,3 +129,7 @@ export const addDocument = (entityId, document, entityType, channel) =>
 /** A one-time link for the person to photograph their ID and take a selfie on their phone (hosted OneSDK). */
 export const hostedIdvUrl = (entityId, flowId) =>
   call('POST', '/v2/individuals/hostedUrl', { entityId, consent: true, oneSDKFlowId: flowId, sendSMS: false });
+
+/** A comment on a record. It's immutable, and recorded in the audit log with the author as its source. */
+export const addComment = (entityId, entityType, text, channel, author) =>
+  call('POST', '/v2/comments', { comment: { text, entityId, entityType } }, channel, author);

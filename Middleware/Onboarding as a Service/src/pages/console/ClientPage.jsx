@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useOutletContext, useParams } from 'react-router-dom';
 import { Download, Loader2, MoreHorizontal, RefreshCw, Smartphone, Upload, UserMinus, X } from 'lucide-react';
-import { getClient, getClientFile, idvLink, removeClient, uploadDocument } from '../../api';
-import { Attributes, Avatar, Loading, Menu, Panel, RecordLayout, StatusPill, Tabs, TopBar, btn, fmtDateTime, menuItem } from '../../components/ui';
-import { Documents, History, IdvLink, RecordSummary, Risk, UploadDocument, Verifications, printFile, seen } from '../../components/ClientFile';
+import { addComment, getClient, getClientFile, idvLink, removeClient, uploadDocument } from '../../api';
+import { Attributes, Avatar, CopyValue, Loading, Menu, Panel, RecordLayout, StatusPill, Tabs, TopBar, btn, fmtDateTime, menuItem } from '../../components/ui';
+import { Activity, Documents, History, IdvLink, RecordSummary, Risk, UploadDocument, Verifications, printFile, seen } from '../../components/ClientFile';
 import { subtitle } from './Clients';
 
 const ESTABLISHING_FOR = { Trust: 'TRUST_DEED', Partnership: 'PARTNERSHIP_AGREEMENT', Company: 'CERTIFICATE_OF_REGISTRATION', 'Other organisation': 'CONSTITUTION' };
@@ -72,8 +72,8 @@ export default function ClientPage() {
       <RecordSummary file={summary} onOpenRun={openRun} people={business && !subject ? file?.people : undefined} />
       <Panel title="Details">
         <Attributes rows={[
-          ['Reference', <span key="r" className="font-mono">{client.clientRef}</span>],
-          (subject || file)?.entityId && ['FrankieOne ID', <span key="e" className="font-mono text-[12px] text-slate-600 break-all">{(subject || file).entityId}</span>],
+          ['Reference', <CopyValue key="r" value={client.clientRef} />],
+          (subject || file)?.entityId && ['FrankieOne ID', <CopyValue key="e" value={(subject || file).entityId} />],
           ['First seen', fmtDateTime(seen(summary?.verifications).first)],
           ['Last seen', fmtDateTime(seen(summary?.verifications).last)],
         ]} />
@@ -128,7 +128,14 @@ export default function ClientPage() {
     ['verifications', 'Verifications', view?.verifications.length],
     ['documents', 'Documents', view?.documents.length],
     ['risk', 'Risk'],
+    ['audit', 'Audit'],
   ];
+  // For a business, its people's entries are merged in and labelled with who they're about.
+  const merged = (key) => (subject || !business ? view[key] : [
+    ...view[key],
+    ...view.people.flatMap((p) => p[key].map((e) => ({ ...e, who: p.name }))),
+  ].sort((x, y) => Date.parse(y.at) - Date.parse(x.at)));
+  const comment = async (text) => { await addComment(handle, text, subject?.personHandle); await loadFile(); };
   const main = (
     <>
       {subject && (
@@ -141,10 +148,8 @@ export default function ClientPage() {
       {error && <p className="px-5 pt-3 text-[13px] text-red-700">{error}</p>}
       {!view ? <Loading>Loading the client file…</Loading> : (
         <>
-          {tab === 'activity' && <History items={subject || !business ? view.history : [
-            ...view.history,
-            ...view.people.flatMap((p) => p.history.map((e) => ({ ...e, who: p.name }))),
-          ].sort((x, y) => Date.parse(y.at) - Date.parse(x.at))} />}
+          {tab === 'activity' && <Activity items={merged('activity')} onComment={comment} onOpenRun={openRun} />}
+          {tab === 'audit' && <History items={merged('history')} />}
           {tab === 'verifications' && (business && !subject && !view.verifications.length
             ? <p className="px-5 py-6 text-[13px] text-slate-500">Each person behind the business is verified individually. Choose someone under People.</p>
             : <Verifications key={`${person || 'main'}-${focus}`} focus={focus} items={view.verifications} />)}

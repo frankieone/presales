@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink } from 'react-router-dom';
-import { ChevronRight, Loader2, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { Check, ChevronRight, Copy, Loader2, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 
 /**
  * The shared design system, in the style of a CRM: a collapsible sidebar,
@@ -228,6 +228,25 @@ export function Menu({ label, children, align = 'right', className, width = 'min
   );
 }
 export const menuItem = 'w-full text-left flex items-center gap-2 px-2.5 h-8 rounded-md text-[13px] text-slate-700 hover:bg-slate-100';
+
+/** A value with a copy-to-clipboard button beside it. */
+export function CopyValue({ value, mono = true }) {
+  const [copied, setCopied] = useState(false);
+  if (!value) return '—';
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(value); } catch { /* clipboard blocked */ }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+  return (
+    <span className="group inline-flex items-start gap-1.5 max-w-full">
+      <span className={`${mono ? 'font-mono text-[12px]' : ''} text-slate-800 break-all`}>{value}</span>
+      <button onClick={copy} title={copied ? 'Copied' : 'Copy'} className={`shrink-0 mt-px w-5 h-5 rounded flex items-center justify-center ${copied ? 'text-green-600' : 'text-slate-400 hover:text-slate-900 hover:bg-slate-100'}`}>
+        {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+      </button>
+    </span>
+  );
+}
 
 // ── status ──────────────────────────────────────────────────────────
 const STATUS = {

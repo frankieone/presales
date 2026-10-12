@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useOutletContext, useParams } from 'react-router-dom';
 import { Download, MoreHorizontal } from 'lucide-react';
-import { forgetIndex, getEntityFile } from '../../api';
-import { Attributes, Avatar, Badge, Loading, Menu, Panel, RecordLayout, StatusPill, Tabs, TopBar, fmtDateTime, menuItem, btn } from '../../components/ui';
-import { Documents, History, RecordSummary, Risk, Verifications, printFile, seen } from '../../components/ClientFile';
+import { addEntityComment, forgetIndex, getEntityFile } from '../../api';
+import { Attributes, Avatar, Badge, CopyValue, Loading, Menu, Panel, RecordLayout, StatusPill, Tabs, TopBar, fmtDateTime, menuItem, btn } from '../../components/ui';
+import { Activity, Documents, History, RecordSummary, Risk, Verifications, printFile, seen } from '../../components/ClientFile';
 
 const how = (r) => (r.removedAt ? ['Left', 'slate'] : r.reviewId ? ['Possible duplicate', 'amber'] : r.mergedFrom ? ['Merged in', 'violet']
   : r.reusedRecord ? ['Record already held', 'blue'] : ['New to the network', 'green']);
@@ -39,7 +39,7 @@ export default function Record() {
       <RecordSummary file={file} full onOpenRun={(ref) => { setFocus(ref); setTab('verifications'); }} />
       <Panel title="Details">
         <Attributes rows={[
-          ['FrankieOne ID', <span key="id" className="font-mono text-[12px] text-slate-600 break-all">{entityId}</span>],
+          ['FrankieOne ID', <CopyValue key="id" value={entityId} />],
           ['State', file?.state || '—'],
           ['First seen', fmtDateTime(seen(file?.verifications).first)],
           ['Last seen', fmtDateTime(seen(file?.verifications).last)],
@@ -64,7 +64,7 @@ export default function Record() {
                 <StatusPill status={r.status} />
               </div>
               <div className="mt-2.5 grid grid-cols-[72px_1fr] gap-y-1 text-[12px]">
-                <span className="text-slate-500">Reference</span><span className="font-mono text-slate-800">{r.clientRef}</span>
+                <span className="text-slate-500">Reference</span><CopyValue value={r.clientRef} />
                 <span className="text-slate-500">Handle</span><span className="font-mono text-slate-800">{r.handle}</span>
                 {r.workflow && <><span className="text-slate-500">Workflow</span><span className="font-mono text-slate-500 truncate">{r.workflow}</span></>}
               </div>
@@ -79,15 +79,18 @@ export default function Record() {
   const main = (
     <>
       <Tabs value={tab} onChange={setTab} tabs={[
-        ['activity', 'Audit history', file?.history.length],
+        ['activity', 'Activity'],
         ['verifications', 'Verifications', file?.verifications.length],
         ['documents', 'Documents', file?.documents.length],
         ['risk', 'Risk'],
+        ['audit', 'Audit'],
       ]} />
       {error && <p className="px-5 pt-3 text-[13px] text-red-700">{error}</p>}
       {!file ? (!error && <Loading>Loading from FrankieOne…</Loading>) : (
         <>
-          {tab === 'activity' && <History items={file.history} full />}
+          {tab === 'activity' && <Activity items={file.activity} full onOpenRun={(ref) => { setFocus(ref); setTab('verifications'); }}
+            onComment={async (text) => { await addEntityComment(entityId, text); setFile(await getEntityFile(entityId)); }} />}
+          {tab === 'audit' && <History items={file.history} full />}
           {tab === 'verifications' && <Verifications key={focus} focus={focus} items={file.verifications} full />}
           {tab === 'documents' && <Documents items={file.documents} full attachmentPath={(d, a) => `/internal/entities/${entityId}/documents/${d.documentId}/attachments/${a.attachmentId}`} />}
           {tab === 'risk' && <Risk risk={file.risk} full />}

@@ -179,6 +179,36 @@ function documentView(d, scores) {
   };
 }
 
+// ── activity: workflows, risk assessments, comments, documents ──────
+// A comment left on the record (the audit log carries it, with the author as its source), or a
+// note left with a person's action, such as a duplicate decision. Notes the workflows leave
+// themselves are not comments.
+const commentOf = (e) => (e.userComment?.text && !/by monitoring step/i.test(e.userComment.text)
+  ? { commentId: e.userComment.commentId, text: e.userComment.text, author: e.source || 'FrankieOne', action: e.functionName === 'AddComment' ? null : e.description } : null);
+
+function activityFrom({ runs, audit, scores, labelFor, keepComment }) {
+  const ids = new Set(runs.map((w) => w.workflowExecutionId));
+  const items = runs.filter((w) => w.lifecyclePhase !== 'MONITORING').map((w) => ({
+    type: 'workflow', at: w.startedAt, workflow: w.workflowName, result: RESULT[w.status] || w.status || 'In progress', ref: w.workflowExecutionId,
+    riskLevel: band(w.risk?.level), ...(scores ? { riskScore: w.risk?.overallScore } : {}), for: labelFor?.(w.workflowExecutionId),
+  }));
+  for (const e of audit) {
+    if (e.type === 'WORKFLOW_RISK_CHANGE' && ids.has(e.workflowExecutionId)) {
+      items.push({ type: 'risk', at: e.timestamp, level: band(e.riskLevel), ...(scores ? { score: e.riskScore } : {}), workflow: e.workflowName, for: labelFor?.(e.workflowExecutionId) });
+    } else if (/RISK/.test(e.type) && !e.workflowExecutionId && e.riskLevel && keepComment === undefined) {
+      items.push({ type: 'risk', at: e.timestamp, level: band(e.riskLevel), ...(scores ? { score: e.riskScore } : {}), by: e.source || null, manual: true });
+    }
+  }
+  const seenComments = new Set();
+  for (const e of audit) {
+    const c = commentOf(e);
+    if (!c || seenComments.has(c.commentId) || (keepComment && !keepComment(c))) continue;
+    seenComments.add(c.commentId);
+    items.push({ type: 'comment', at: e.timestamp, ...c });
+  }
+  return items;
+}
+
 // ── what the platform did, for one relationship ─────────────────────
 function platformEvents(rel) {
   const out = [{ at: rel.createdAt, source: 'Platform', text: rel.kind === 'business' ? 'Business submitted for verification' : rel.kind === 'related' ? `Submitted as ${String(rel.roleLabel || 'person').toLowerCase()} of a business client` : 'Submitted for verification' }];
@@ -213,6 +243,17 @@ async function scopedFile(rel, entityType) {
     // intermediary didn't supply are left out, as they'd show another intermediary's submission.
     risk: mineRuns.length ? riskFrom(mineRuns, latestRisk, (f) => f.factor !== 'document_type' || f.value === submitted?.type, false) : null,
     documents: mineDocs.map((d) => documentView(d, false)),
+    activity: [
+      ...activityFrom({
+        runs: mineRuns, audit, scores: POLICY.shareRiskScore,
+        keepComment: (c) => (rel.comments || []).some((x) => x.commentId === c.commentId),
+      }),
+      ...(rel.comments || []).filter((c) => c.text && !audit.some((e) => e.userComment?.commentId === c.commentId))
+        .map((c) => ({ type: 'comment', at: c.at, commentId: c.commentId, text: c.text, author: c.author, action: null })),
+      ...(rel.uploads || []).map((u) => ({ type: 'document', at: u.at, text: u.label })),
+      { type: 'event', at: rel.createdAt, text: rel.kind === 'business' ? 'Business submitted for verification' : 'Submitted for verification' },
+      ...(rel.idvRequests || []).map((q) => ({ type: 'event', at: q.at, text: 'ID check link sent' })),
+    ].sort((a, b) => Date.parse(b.at) - Date.parse(a.at)),
     history: [
       ...keyEvents(audit.filter((e) => mineIds.has(e.workflowExecutionId))),
       ...platformEvents(rel),
@@ -309,6 +350,13 @@ export async function platformFile(entityId) {
     verifications: runs.map((w) => ({ ...verification(w, true), for: holderLabel(ownerByRun[w.workflowExecutionId]) })),
     risk: riskFrom(runs, latestRisk, () => true, true),
     documents: docs.map((d) => ({ ...documentView(d, true), addedBy: uploader(d) ? byId[uploader(d).intermediaryId]?.name : null })),
+    activity: [
+      ...activityFrom({ runs, audit, scores: true, labelFor: (id) => holderLabel(ownerByRun[id]) }),
+      ...audit.filter((e) => e.functionName === 'CreateDocuments').map((e) => {
+        const by = rels.find((r) => (r.documentIds || []).includes(e.supplementaryData?.documentId));
+        return { type: 'document', at: e.timestamp, text: (DOC_TYPE[e.supplementaryData?.documentType] || 'Document') + ' added', for: by ? byId[by.intermediaryId]?.name : null };
+      }),
+    ].sort((a, b) => Date.parse(b.at) - Date.parse(a.at)),
     history: audit.map((e) => ({
       at: e.timestamp, source: e.source || e.channel || 'FrankieOne', type: e.type, text: auditText(e), result: RESULT[e.status] || e.status || null,
       workflow: e.workflowName || null, for: e.workflowExecutionId ? holderLabel(ownerByRun[e.workflowExecutionId]) : null,
@@ -322,3 +370,27 @@ export const platformAttachment = (entityId, documentId, attachmentId) => {
   if (!rel) throw new ClientError(404, 'NOT_FOUND', 'No such record on the network.');
   return attachment(entityId, documentId, attachmentId, rel.kind === 'business' ? 'ORGANIZATION' : 'INDIVIDUAL');
 };
+
+// ── comments ────────────────────────────────────────────────────────
+/** An intermediary comments on its client (or one person behind a business). Comments are immutable. */
+export async function addClientComment(intermediary, handle, body) {
+  const text = String(body?.text || '').trim();
+  if (!text) throw new ClientError(400, 'EMPTY', 'Write a comment first.');
+  if (text.length > 2000) throw new ClientError(400, 'TOO_LONG', 'Comments can be up to 2,000 characters.');
+  const client = findClient(intermediary, handle);
+  const rel = body.person ? peopleOf(client).find((p) => p.handle === body.person) : client;
+  if (!rel) throw new ClientError(404, 'NOT_FOUND', 'No such person.');
+  const r = await frankie.addComment(rel.entityId, rel.kind === 'business' ? 'ORGANIZATION' : 'INDIVIDUAL', text, intermediary.id, intermediary.name);
+  // Kept so the comment shows at once: FrankieOne's audit log takes a few seconds to include it.
+  store.update(rel, { comments: [...(rel.comments || []), { commentId: r.comment?.commentId, text, author: intermediary.name, at: new Date().toISOString() }] });
+  return { commentId: r.comment?.commentId };
+}
+
+/** The platform's compliance team comments on a record. */
+export async function addPlatformComment(entityId, text) {
+  const rel = relsOn(entityId)[0];
+  if (!rel) throw new ClientError(404, 'NOT_FOUND', 'No such record on the network.');
+  if (!String(text || '').trim()) throw new ClientError(400, 'EMPTY', 'Write a comment first.');
+  const r = await frankie.addComment(entityId, rel.kind === 'business' ? 'ORGANIZATION' : 'INDIVIDUAL', String(text).trim().slice(0, 2000), 'platform', 'Platform compliance');
+  return { commentId: r.comment?.commentId };
+}

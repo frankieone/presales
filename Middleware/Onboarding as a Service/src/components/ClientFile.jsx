@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Check, CheckCircle2, ChevronRight, CircleDashed, Copy, ExternalLink, FileText, FolderOpen, History as HistoryIcon, Image as ImageIcon, Loader2, ShieldCheck, Upload, XCircle } from 'lucide-react';
+import { Check, CheckCircle2, ChevronRight, CircleDashed, Copy, ExternalLink, FileText, FolderOpen, Gauge, History as HistoryIcon, Image as ImageIcon, ListChecks, Loader2, MessageSquare, ShieldCheck, Upload, XCircle } from 'lucide-react';
 import { fileUrl } from '../api';
 import { Badge, Empty, Panel, btn, fmtDate, fmtDateTime, fmtTime, input } from './ui';
 
@@ -117,6 +117,92 @@ export function Documents({ items, attachmentPath, full }) {
             <p className="text-[12px] text-slate-500">{fmtDate(d.addedAt)}{full && d.addedBy ? ` · added by ${d.addedBy}` : ''}{d.attachments.length ? '' : ' · details only'}</p>
           </div>
           <div className="flex gap-1.5">{d.attachments.map((a) => <Thumb key={a.attachmentId} att={a} path={attachmentPath(d, a)} />)}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── activity: workflows, risk assessments, comments, documents ──────
+function CommentBox({ onComment }) {
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const submit = async () => {
+    setBusy(true); setError('');
+    try { await onComment(text); setText(''); } catch (e) { setError(e.message); } finally { setBusy(false); }
+  };
+  return (
+    <div className="mb-5 rounded-lg border border-slate-200 focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/20">
+      <textarea value={text} onChange={(e) => setText(e.target.value)} rows={2} placeholder="Add a comment…"
+        className="w-full resize-none rounded-t-lg px-3 py-2.5 text-[13px] placeholder:text-slate-400 focus:outline-none" />
+      <div className="px-2 pb-2 flex items-center justify-between gap-2">
+        <span className="text-[12px] text-slate-400">{error ? <span className="text-red-700">{error}</span> : 'Saved to the record in FrankieOne. Comments can’t be edited.'}</span>
+        <button onClick={submit} disabled={busy || !text.trim()} className={btn.primary}>{busy && <Loader2 className="w-4 h-4 animate-spin" />} Comment</button>
+      </div>
+    </div>
+  );
+}
+
+const ICON = {
+  workflow: [ListChecks, 'bg-blue-50 text-blue-600'], risk: [Gauge, 'bg-amber-50 text-amber-600'],
+  comment: [MessageSquare, 'bg-violet-50 text-violet-600'], document: [FileText, 'bg-slate-100 text-slate-500'],
+};
+
+/**
+ * The record's story: every workflow run, risk assessment, comment and
+ * document, newest first. The Audit tab has the step-by-step detail.
+ */
+export function Activity({ items, full, onComment, onOpenRun }) {
+  const days = [];
+  for (const e of items || []) {
+    const day = fmtDate(e.at);
+    if (days.at(-1)?.day !== day) days.push({ day, events: [] });
+    days.at(-1).events.push(e);
+  }
+  return (
+    <div className="px-5 py-4">
+      {onComment && <CommentBox onComment={onComment} />}
+      {!items?.length && <Empty icon={HistoryIcon} title="No activity yet" />}
+      {days.map(({ day, events }) => (
+        <div key={day} className="mb-6 last:mb-0">
+          <p className="text-[12px] font-medium text-slate-500 mb-2">{day}</p>
+          <ol className="space-y-1">
+            {events.map((e, i) => {
+              const [Icon, tone] = ICON[e.type] || [null, ''];
+              const who = e.who && <span className="text-slate-500">{e.who} · </span>;
+              return (
+                <li key={i} className="flex items-start gap-3 py-1.5">
+                  {Icon ? <span className={`w-7 h-7 rounded-md flex items-center justify-center shrink-0 ${tone}`}><Icon className="w-4 h-4" strokeWidth={1.75} /></span>
+                    : <span className="w-7 h-7 flex items-center justify-center shrink-0"><span className="w-1.5 h-1.5 rounded-full bg-slate-300" /></span>}
+                  <div className="min-w-0 flex-1 pt-1">
+                    {e.type === 'workflow' && (
+                      <button onClick={() => onOpenRun?.(e.ref)} className="text-left">
+                        <p className="text-[13px] text-slate-900">{who}<span className="font-medium hover:underline">{e.workflow}</span> <span className="ml-1"><Result value={e.result} /></span></p>
+                        <p className="text-[12px] text-slate-500">Workflow run{e.riskLevel ? ` · ${e.riskLevel} risk${e.riskScore != null ? ` (${e.riskScore})` : ''}` : ''}{full && e.for ? ` · for ${e.for}` : ''}</p>
+                      </button>
+                    )}
+                    {e.type === 'risk' && (
+                      <>
+                        <p className="text-[13px] text-slate-900">{who}Risk {e.manual ? 'changed' : 'assessed'}: <span className={`font-medium ${RISK_TEXT[e.level] || ''}`}>{e.level}</span>{e.score != null ? ` · score ${e.score}` : ''}</p>
+                        <p className="text-[12px] text-slate-500">{e.manual ? `By ${e.by || 'an operator'}` : e.workflow}{full && e.for ? ` · for ${e.for}` : ''}</p>
+                      </>
+                    )}
+                    {e.type === 'comment' && (
+                      <>
+                        <p className="text-[13px] text-slate-900">{who}<span className="font-medium">{e.author}</span>{e.action ? <span className="text-slate-500"> on “{e.action}”</span> : ' commented'}</p>
+                        <p className="mt-1 text-[13px] text-slate-700 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 whitespace-pre-wrap">{e.text}</p>
+                      </>
+                    )}
+                    {(e.type === 'document' || e.type === 'event') && (
+                      <p className="text-[13px] text-slate-700">{who}{e.type === 'document' ? 'Document added: ' : ''}{e.text}{full && e.for ? <span className="text-slate-500"> · {e.for}</span> : ''}</p>
+                    )}
+                  </div>
+                  <span className="pt-1 text-[12px] text-slate-400 tabular-nums shrink-0">{fmtTime(e.at)}</span>
+                </li>
+              );
+            })}
+          </ol>
         </div>
       ))}
     </div>
