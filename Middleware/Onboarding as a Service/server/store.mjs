@@ -18,7 +18,7 @@ import path from 'node:path';
 import { PLATFORM } from './config.mjs';
 
 const FILE = path.join(PLATFORM.dataDir, 'store.json');
-const EMPTY = { index: {}, relationships: [], disclosures: [], submissions: [], reviews: [], merges: [], activity: [], brands: {} };
+const EMPTY = { index: {}, relationships: [], disclosures: [], submissions: [], reviews: [], merges: [], activity: [], brands: {}, blocklist: [] };
 
 let db = load();
 
@@ -86,7 +86,11 @@ export const store = {
   merge: (id) => db.merges.find((m) => m.id === id),
   merges: () => db.merges,
   touch() { save(); },
-  addActivity(a) { (db.activity ||= []).push(a); if (db.activity.length > 200) db.activity = db.activity.slice(-200); save(); },
+  addActivity(a) { (db.activity ||= []).push(a); if (db.activity.length > 1500) db.activity = db.activity.slice(-1500); save(); },
+
+  // the network blocklist: people the platform won't onboard through any intermediary
+  blocklist: () => db.blocklist || [],
+  addBlock(entry) { (db.blocklist ||= []).push(entry); save(); return entry; },
   activity: () => db.activity || [],
 
   // white-label brands saved from the platform's Branding page (kept when the demo is reset)

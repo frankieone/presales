@@ -53,6 +53,10 @@ export const getEntityFile = (entityId) => call('GET', `/internal/entities/${ent
 export const addEntityComment = (entityId, text) => call('POST', `/internal/entities/${entityId}/comments`, { text });
 export const setPolicy = (changes) => call('PUT', '/internal/policy', changes);
 export const rerunChecks = (handle) => call('POST', `/api/v1/clients/${handle}/rerun`);
+export const demoSummary = () => call('GET', '/internal/demo');
+export const fillDemo = () => call('POST', '/internal/demo/fill', {});
+export const setLiveDemo = (on) => call('POST', '/internal/demo/live', { on });
+export const clearDemo = () => call('DELETE', '/internal/demo');
 export const getBrands = () => call('GET', '/internal/brands');
 export const saveBrand = (id, brand) => call('PUT', `/internal/brands/${id}`, brand);
 export const resetBrand = (id) => call('DELETE', `/internal/brands/${id}`);

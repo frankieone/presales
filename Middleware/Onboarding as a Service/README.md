@@ -42,6 +42,22 @@ Every onboarding response takes at least the minimum response time (10 seconds b
 
 **Different people** on a held review keeps both records and verifies the new one on its own.
 
+### Demo data: a busy network
+
+**Platform operations** → **Simulation** → **Fill the network** generates two weeks of activity across nine intermediaries: about 60 people onboarding, the same people joining other intermediaries (checks reused where they cover it, topped up where they don't), duplicates found through a different document (some decided by staff, five still waiting, from minutes to over a day old), people added to the network blocklist and their later attempts, re-runs, ongoing monitoring alerts and automatic merges. **Live activity** keeps adding an event every five seconds.
+
+Six of the generated intermediaries run different checks, so one person can be KYC-checked at one, AML-screened at another and asked for a photo ID and selfie at a third:
+
+| Intermediary | Checks |
+|---|---|
+| Northgate, Bluewave, Kestrel, Eastwood | Blocklist, KYC, AML |
+| Anchor, Fairhaven | Blocklist, KYC |
+| Banksia | Blocklist, AML |
+| Coastal | Blocklist, photo ID, selfie |
+| Drummond | Blocklist, KYC, AML, photo ID, selfie |
+
+None of it goes to FrankieOne. Demo records have entity IDs starting `feed`, and `server/standin.mjs` answers every FrankieOne call for them (records, workflow runs, documents, audit trail, comments, duplicate results), so the platform's own logic runs on them unchanged: decisions, merges, reuse, the client file and the consoles. They're marked **Demo** in the platform's records list. The **Blocklist** page lists who's blocked, why, who added them and the attempts since. The trash icon next to **Live activity** clears everything.
+
 ### Decisions: sign-off, history and time on hold
 
 Platform staff sign in by name (two demo staff: Priya Shah, compliance officer, and Tom Nguyen, compliance analyst; in production, staff SSO). Every duplicate decision and every reversal needs a reason, and records who made it, their role and when. The reason and the name are also written to FrankieOne with the decision, so the record's own audit trail shows who signed it off.

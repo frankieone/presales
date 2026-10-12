@@ -18,6 +18,7 @@ import { FRANKIE, NAMED_IDS, PLATFORM, PLATFORM_STAFF, POLICY, SECRET, byId } fr
 import { ClientError, rerun, decide, forgetIndex, intermediaryForToken, list, network, offboard, onboard, provideDocument, refresh, reverseMerge, tokenFor } from './tier1.mjs';
 import { store } from './store.mjs';
 import { FONTS, brandFor, resetBrand, saveBrand } from './brand.mjs';
+import * as demo from './demodata.mjs';
 import { compareRecords, reviewComparison, addClientComment, addPlatformComment, intermediaryAttachment, intermediaryFile, platformAttachment, platformFile, sendIdvLink } from './clientfile.mjs';
 import { DEMO_PEOPLE } from './demo-people.mjs';
 
@@ -82,6 +83,11 @@ async function route(req, res) {
     if (!staff) return send(res, 401, { error: 'UNAUTHORISED' });
     if (p === '/internal/me') return send(res, 200, staff);
     if (p === '/internal/network') return send(res, 200, network());
+    // Demo data: generated people and events, answered by the FrankieOne stand-in, never sent to FrankieOne.
+    if (p === '/internal/demo' && req.method === 'GET') return send(res, 200, demo.summary());
+    if (p === '/internal/demo/fill' && req.method === 'POST') return send(res, 200, demo.fill(await readBody(req)));
+    if (p === '/internal/demo/live' && req.method === 'POST') return send(res, 200, (await readBody(req)).on ? demo.startLive() : demo.stopLive());
+    if (p === '/internal/demo' && req.method === 'DELETE') return send(res, 200, demo.clearAll());
     if (p === '/internal/compare' && req.method === 'GET') return send(res, 200, await compareRecords(url.searchParams.get('a'), url.searchParams.get('b')));
     // Demo: switch the automatic-resolution policies without a restart.
     if (p === '/internal/policy' && req.method === 'PUT') {

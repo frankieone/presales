@@ -11,7 +11,7 @@ import PlatformLayout from './pages/platform/Layout';
 import Record from './pages/platform/Record';
 import Branding from './pages/platform/Branding';
 import Simulation from './pages/platform/Simulation';
-import { ActivityLog, Decisions, Disclosures, Merges, Policies, Records } from './pages/platform/pages';
+import { ActivityLog, Blocklist, Decisions, Disclosures, Merges, Policies, Records } from './pages/platform/pages';
 
 // A fresh client page per client, so nothing carries over when moving between them.
 function KeyedClientPage() { const { handle } = useParams(); return <ClientPage key={handle} />; }
@@ -44,6 +44,7 @@ export default function App() {
               <Route path="records/:entityId" element={<Record />} />
               <Route path="activity" element={<ActivityLog />} />
               <Route path="merges" element={<Merges />} />
+              <Route path="blocklist" element={<Blocklist />} />
               <Route path="disclosures" element={<Disclosures />} />
               <Route path="policies" element={<Policies />} />
               <Route path="branding" element={<Branding />} />

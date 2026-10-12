@@ -5,6 +5,7 @@
  * FrankieOne's audit trail records which intermediary a verification was for.
  */
 import { FRANKIE } from './config.mjs';
+import * as standin from './standin.mjs';
 
 function headers(channel, username) {
   return {
@@ -18,6 +19,8 @@ function headers(channel, username) {
 }
 
 async function call(method, path, body, channel, username) {
+  // Generated demo records never reach FrankieOne: the stand-in answers for them.
+  if (standin.owns(path, body)) return standin.handle(method, path, body, channel, username);
   const res = await fetch(`${FRANKIE.server}${path}`, {
     method,
     headers: headers(channel, username),

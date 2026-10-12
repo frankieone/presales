@@ -43,7 +43,7 @@ export const intermediaryForToken = (token) => byId[tokens[token]] || null;
 // ── outcome mapping ─────────────────────────────────────────────────
 const STEP = (result, name) => (result?.workflowStepResults || []).find((s) => s.stepName === name)?.result;
 
-function outcome(result) {
+export function outcome(result) {
   const status = result?.status;
   const risk = String(result?.riskAssessment?.riskLevel || result?.riskAssessment?.level || '').toUpperCase();
   const band = risk.startsWith('UNACC') || risk === 'HIGH' ? 'High' : risk === 'MEDIUM' ? 'Medium' : risk === 'LOW' ? 'Low' : status === 'PASS' ? 'Low' : 'Medium';
@@ -869,6 +869,7 @@ export function network() {
     }),
     merges: store.merges().slice().reverse().map((m) => ({ ...m, intermediary: byId[m.intermediaryId]?.name })),
     decisions: decisionHistory(),
-    activity: store.activity().slice(-15).reverse(),
+    activity: store.activity().slice().sort((a, b) => Date.parse(b.at) - Date.parse(a.at)).slice(0, 120),
+    blocklist: store.blocklist().slice().sort((a, b) => Date.parse(b.at) - Date.parse(a.at)),
   };
 }

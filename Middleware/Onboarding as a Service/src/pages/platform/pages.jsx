@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
-import { Activity as ActivityIcon, AlertTriangle, ChevronRight, Clock, Database, Eye, GitMerge, Loader2, Scale, Undo2 } from 'lucide-react';
+import { Activity as ActivityIcon, AlertTriangle, Ban, ChevronRight, Clock, Database, Eye, GitMerge, Loader2, Scale, Undo2 } from 'lucide-react';
 import { compareRecords, decideReview, reverseMerge, reviewComparison } from '../../api';
 import { Thumb } from '../../components/ClientFile';
 import { Attributes, Avatar, Badge, Body, CopyValue, Empty, ListToolbar, Loading, Panel, StatusPill, TopBar, WAIT_CLS, ago, btn, duration, fmtDate, fmtDateTime, td, th, waitTone } from '../../components/ui';
@@ -50,7 +50,7 @@ export function Records() {
             <tbody>
               {shown.map(({ inv, active, holders, latest }) => (
                 <tr key={inv.entityId} onClick={() => navigate(`/platform/records/${inv.entityId}`)} className="cursor-pointer hover:bg-slate-50">
-                  <td className={td}><span className="flex items-center gap-2.5"><Avatar name={inv.name} kind={inv.entityType} /><span className="font-medium text-slate-900">{inv.name}</span></span></td>
+                  <td className={td}><span className="flex items-center gap-2.5"><Avatar name={inv.name} kind={inv.entityType} /><span className="font-medium text-slate-900">{inv.name}</span>{inv.entityId.startsWith('feed') && <span title="Generated demo data, not a FrankieOne record" className="text-[10px] font-medium uppercase tracking-wide text-slate-400 border border-slate-200 rounded px-1">Demo</span>}</span></td>
                   <td className={`${td} text-slate-600`}>{inv.entityType === 'ORGANIZATION' ? inv.businessType : 'Individual'}</td>
                   <td className={td}>
                     <span className="flex items-center gap-1.5">
@@ -492,6 +492,52 @@ export function Policies() {
             </div>
           </Panel>
         </div>
+      </div>
+    </>
+  );
+}
+
+// ── blocklist ───────────────────────────────────────────────────────
+/** People the platform won't onboard through any intermediary, why, who added them, and who has tried since. */
+export function Blocklist() {
+  const { data } = useData();
+  const navigate = useNavigate();
+  if (!data) return <><TopBar crumbs={[{ label: 'Blocklist' }]} /><Loading /></>;
+  const list = data.blocklist || [];
+  return (
+    <>
+      <TopBar crumbs={[{ label: 'Blocklist' }]} actions={<span className="text-[13px] text-slate-500">Intermediaries see Declined, never why</span>} />
+      <div className="flex-1 min-h-0 overflow-auto">
+        {list.length === 0 ? <Empty icon={Ban} title="No one on the blocklist">Fill the network with demo data (Simulation) to see blocklisted people and the attempts they make.</Empty> : (
+          <table className="w-full">
+            <thead><tr><th className={th}>Person</th><th className={th}>Reason</th><th className={th}>Added by</th><th className={th}>Attempts since</th></tr></thead>
+            <tbody>
+              {list.map((b) => {
+                const last = b.attempts?.at(-1);
+                return (
+                  <tr key={b.id} onClick={() => navigate(`/platform/records/${b.entityId}`)} className="cursor-pointer hover:bg-slate-50 align-top">
+                    <td className={`${td} py-3`}>
+                      <span className="flex items-center gap-2.5"><Avatar name={b.name} /><span><span className="block font-medium text-slate-900">{b.name}</span><span className="block text-[12px] text-slate-500">Born {b.dateOfBirth}</span></span></span>
+                    </td>
+                    <td className={`${td} py-3 whitespace-normal text-slate-700 max-w-md`}>{b.reason}</td>
+                    <td className={`${td} py-3`}>
+                      <span className="block text-slate-900">{b.addedBy?.name}</span>
+                      <span className="block text-[12px] text-slate-500">{b.addedBy?.role} · {fmtDate(b.at)}</span>
+                    </td>
+                    <td className={`${td} py-3`}>
+                      {b.attempts?.length ? (
+                        <>
+                          <Badge tone="red">{b.attempts.length} blocked</Badge>
+                          <span className="block mt-1 text-[12px] text-slate-500">Latest: {last.intermediary}, {ago(last.at)}</span>
+                        </>
+                      ) : <span className="text-[12px] text-slate-400">None</span>}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
       </div>
     </>
   );

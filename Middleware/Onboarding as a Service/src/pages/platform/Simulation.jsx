@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { CheckCircle2, Circle, Loader2, Play, RotateCcw } from 'lucide-react';
-import { decideReview, network, resetDemo, setPolicy } from '../../api';
+import { CheckCircle2, Circle, Database, Loader2, Play, RotateCcw, Trash2, Zap } from 'lucide-react';
+import { clearDemo, decideReview, demoSummary, fillDemo, network, resetDemo, setLiveDemo, setPolicy } from '../../api';
 import { Badge, BrandLogo, StatusPill, TopBar, btn } from '../../components/ui';
 
 /**
@@ -79,7 +79,9 @@ export default function Simulation() {
       <TopBar crumbs={[{ label: 'Simulation' }]} actions={<button onClick={fresh} disabled={!!running} className={btn.secondary}><RotateCcw className="w-4 h-4" /> Start fresh</button>} />
       <div className="flex-1 min-h-0 overflow-y-auto">
         <div className="max-w-4xl px-6 py-6">
-          <h1 className="text-[20px] font-semibold text-slate-900">One person, three intermediaries</h1>
+          <DemoData onChange={reload} />
+
+          <h1 className="mt-10 text-[20px] font-semibold text-slate-900">One person, three intermediaries</h1>
           <p className="mt-1 text-[13px] text-slate-500 max-w-2xl">Each step calls the same API an intermediary’s own system would. On the left, what the platform did; on the right, all the intermediary saw. Start fresh first, then run the steps in order. Each takes 10 to 25 seconds.</p>
 
           <label className="mt-4 flex items-start gap-2.5 text-[13px] text-slate-700 rounded-lg border border-slate-200 px-4 py-3 max-w-2xl">
@@ -145,5 +147,59 @@ export default function Simulation() {
         </div>
       </div>
     </>
+  );
+}
+
+/**
+ * Fill the network with generated people and events, and optionally keep
+ * adding more every few seconds. All of it is answered by the FrankieOne
+ * stand-in inside the platform; none of it goes to FrankieOne.
+ */
+function DemoData({ onChange }) {
+  const [sum, setSum] = useState(null);
+  const [busy, setBusy] = useState('');
+  const load = () => demoSummary().then(setSum).catch(() => {});
+  useEffect(() => { load(); const t = setInterval(load, 5000); return () => clearInterval(t); }, []);
+  const go = async (key, fn) => { setBusy(key); try { setSum(await fn()); onChange?.(); } finally { setBusy(''); } };
+  const clear = () => window.confirm('Clear everything? This removes all demo data and the platform\u2019s records (FrankieOne records are kept).') && go('clear', clearDemo);
+  return (
+    <section className="rounded-xl border border-slate-200 bg-white">
+      <div className="px-5 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-[16px] font-semibold text-slate-900 flex items-center gap-2"><Database className="w-4 h-4 text-slate-400" /> Demo data</h2>
+          <p className="mt-1 text-[13px] text-slate-500 max-w-xl">Fill the network with two weeks of generated activity: clients onboarding across nine intermediaries, checks reused or topped up, duplicates found, people blocklisted. Answered by a stand-in for FrankieOne inside the platform; nothing is sent to FrankieOne.</p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <button onClick={() => go('fill', fillDemo)} disabled={!!busy} className={btn.primary}>{busy === 'fill' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Database className="w-4 h-4" />} Fill the network</button>
+          <button onClick={() => go('live', () => setLiveDemo(!sum?.live))} disabled={!!busy} className={sum?.live ? `${btn.secondary} !border-green-300 !bg-green-50 !text-green-800` : btn.secondary}>
+            {sum?.live ? <span className="relative flex w-2 h-2"><span className="absolute inline-flex h-full w-full rounded-full bg-green-500 opacity-75 animate-ping" /><span className="relative inline-flex w-2 h-2 rounded-full bg-green-600" /></span> : <Zap className="w-4 h-4" />}
+            {sum?.live ? 'Live: on' : 'Live activity'}
+          </button>
+          <button onClick={clear} disabled={!!busy} title="Clear everything" className={btn.ghost}><Trash2 className="w-4 h-4" /></button>
+        </div>
+      </div>
+      {sum && (
+        <div className="px-5 py-4 border-t border-slate-100 grid md:grid-cols-[auto_1fr] gap-x-10 gap-y-4">
+          <dl className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-[13px] content-start">
+            <dt className="text-slate-500">Records</dt><dd className="font-medium text-slate-900 tabular-nums">{sum.records}</dd>
+            <dt className="text-slate-500">Relationships</dt><dd className="font-medium text-slate-900 tabular-nums">{sum.relationships}</dd>
+            <dt className="text-slate-500">Intermediaries</dt><dd className="font-medium text-slate-900 tabular-nums">{sum.intermediaries}</dd>
+            <dt className="text-slate-500">Waiting decisions</dt><dd className="font-medium text-slate-900 tabular-nums">{sum.waiting}</dd>
+            <dt className="text-slate-500">Blocklisted</dt><dd className="font-medium text-slate-900 tabular-nums">{sum.blocklisted}</dd>
+          </dl>
+          <div>
+            <p className="text-[12px] font-semibold text-slate-500 mb-1.5">What each intermediary checks</p>
+            <ul className="grid sm:grid-cols-2 gap-x-6 gap-y-1 text-[12px]">
+              {sum.checkProfiles.map((c) => (
+                <li key={c.intermediary} className="flex items-center justify-between gap-3">
+                  <span className="text-slate-700 truncate">{c.intermediary}</span>
+                  <span className="flex gap-1">{c.checks.filter((x) => x !== 'MATCHLIST').map((x) => <Badge key={x} tone={{ KYC: 'blue', AML: 'amber', IDV: 'violet', BIOMETRICS: 'violet' }[x]}>{x === 'BIOMETRICS' ? 'Selfie' : x === 'IDV' ? 'Photo ID' : x}</Badge>)}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
+    </section>
   );
 }

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
-import { Activity, Database, Eye, FlaskConical, GitMerge, LogOut, Palette, Scale, Settings2, ShieldCheck, Trash2 } from 'lucide-react';
+import { Activity, Ban, Database, Eye, FlaskConical, GitMerge, LogOut, Palette, Scale, Settings2, ShieldCheck, Trash2 } from 'lucide-react';
 import { getSession, network, platformMe, resetDemo, setSession } from '../../api';
 import { Shell, SideButton } from '../../components/ui';
 
@@ -62,6 +62,7 @@ export default function PlatformLayout({ demo }) {
         badgeTone: data?.reviews.some((r) => Date.now() - Date.parse(r.at) >= data.policy.decisionTargetMinutes * 60000) ? 'red' : null },
       { to: '/platform/activity', label: 'Activity', icon: Activity },
       { to: '/platform/merges', label: 'Merges', icon: GitMerge },
+      { to: '/platform/blocklist', label: 'Blocklist', icon: Ban, badge: data?.blocklist?.length || null },
       { to: '/platform/disclosures', label: 'Disclosure log', icon: Eye },
       { to: '/platform/simulation', label: 'Simulation', icon: FlaskConical },
       { to: '/platform/branding', label: 'Branding', icon: Palette },
