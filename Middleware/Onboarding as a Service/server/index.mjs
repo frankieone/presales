@@ -17,6 +17,7 @@ import crypto from 'node:crypto';
 import { FRANKIE, NAMED_IDS, PLATFORM, POLICY, SECRET, byId } from './config.mjs';
 import { ClientError, decide, forgetIndex, intermediaryForToken, list, network, offboard, onboard, provideDocument, refresh, reverseMerge, tokenFor } from './tier1.mjs';
 import { store } from './store.mjs';
+import { FONTS, brandFor, resetBrand, saveBrand } from './brand.mjs';
 import { addClientComment, addPlatformComment, intermediaryAttachment, intermediaryFile, platformAttachment, platformFile, sendIdvLink } from './clientfile.mjs';
 import { DEMO_PEOPLE } from './demo-people.mjs';
 
@@ -51,7 +52,7 @@ async function route(req, res) {
     const im = intermediaryForToken(bearer(req));
     if (!im) return send(res, 401, { error: 'UNAUTHORISED', message: 'A valid intermediary token is required.' });
     if (p === '/api/v1/me' && req.method === 'GET') {
-      return send(res, 200, { id: im.id, name: im.name, kind: im.kind, colour: im.colour, platform: PLATFORM.name });
+      return send(res, 200, { id: im.id, name: im.name, kind: im.kind, colour: im.colour, platform: PLATFORM.name, brand: brandFor(im.id) });
     }
     if (p === '/api/v1/clients' && req.method === 'GET') return send(res, 200, { clients: list(im) });
     if (p === '/api/v1/clients' && req.method === 'POST') return send(res, 201, await onboard(im, await readBody(req)));
@@ -75,6 +76,12 @@ async function route(req, res) {
   if (p.startsWith('/internal/')) {
     if (bearer(req) !== OPERATOR_TOKEN) return send(res, 401, { error: 'UNAUTHORISED' });
     if (p === '/internal/network') return send(res, 200, network());
+    if (p === '/internal/brands' && req.method === 'GET') {
+      return send(res, 200, { fonts: FONTS, brands: NAMED_IDS.map((id) => ({ id, name: byId[id].name, kind: byId[id].kind, brand: brandFor(id) })) });
+    }
+    const br = p.match(/^\/internal\/brands\/([a-z0-9-]+)$/);
+    if (br && req.method === 'PUT') return send(res, 200, saveBrand(br[1], await readBody(req)));
+    if (br && req.method === 'DELETE') return send(res, 200, resetBrand(br[1]));
     if (p === '/internal/reset' && req.method === 'POST') { store.reset(); return send(res, 200, { reset: true }); }
     const rv = p.match(/^\/internal\/reviews\/(R-[A-Z0-9]+)$/);
     if (rv && req.method === 'POST') { const b = await readBody(req); return send(res, 200, await decide(rv[1], b.decision, b.entityId)); }
@@ -96,7 +103,7 @@ async function route(req, res) {
       platform: PLATFORM.name,
       envLabel: PLATFORM.envLabel,
       intermediariesConfigured: Object.keys(byId).length,
-      intermediaries: NAMED_IDS.map((id) => ({ ...byId[id], token: tokenFor(id) })),
+      intermediaries: NAMED_IDS.map((id) => ({ ...byId[id], token: tokenFor(id), brand: brandFor(id) })),
       operatorToken: OPERATOR_TOKEN,
       minResponseMs: POLICY.minResponseMs,
     });

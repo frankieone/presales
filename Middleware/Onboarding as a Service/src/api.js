@@ -48,6 +48,9 @@ export const decideReview = (id, decision, entityId) => call('POST', `/internal/
 export const reverseMerge = (id) => call('POST', `/internal/merges/${id}/reverse`);
 export const getEntityFile = (entityId) => call('GET', `/internal/entities/${entityId}/file`);
 export const addEntityComment = (entityId, text) => call('POST', `/internal/entities/${entityId}/comments`, { text });
+export const getBrands = () => call('GET', '/internal/brands');
+export const saveBrand = (id, brand) => call('PUT', `/internal/brands/${id}`, brand);
+export const resetBrand = (id) => call('DELETE', `/internal/brands/${id}`);
 export const forgetIndex = (entityId) => call('POST', '/internal/forget', { entityId });
 
 /** A document's file (photo, scan, PDF), fetched with the signed-in token, as a local object URL. */

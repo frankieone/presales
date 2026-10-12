@@ -21,6 +21,43 @@ export const ago = (iso) => {
 };
 const initials = (name) => String(name || '?').split(/\s+/).filter((w) => /^[A-Za-z]/.test(w)).map((w) => w[0]).slice(0, 2).join('').toUpperCase();
 
+// ── white-label theme ───────────────────────────────────────────────
+const hexToRgb = (hex) => [1, 3, 5].map((i) => parseInt(String(hex || '#4284FB').slice(i, i + 2), 16));
+const FONT_STACK = { 'Source Serif 4': '"Source Serif 4", Georgia, serif' };
+
+/** CSS variables and font for a brand. Text on the brand colour is white or near-black, whichever reads better. */
+export function themeStyle(brand) {
+  if (!brand) return {};
+  const [r, g, b] = hexToRgb(brand.primary);
+  const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+  return {
+    '--brand-rgb': `${r} ${g} ${b}`,
+    '--brand-fg': lum > 0.62 ? '#0f172a' : '#ffffff',
+    fontFamily: FONT_STACK[brand.font] || `"${brand.font}", Inter, ui-sans-serif, system-ui, sans-serif`,
+  };
+}
+
+/** The intermediary's logo: an uploaded image, a wordmark, or a monogram, in its colour. */
+export function BrandLogo({ brand, compact, size = 28 }) {
+  const initials = String(brand.displayName || '?').split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase();
+  if (brand.logoStyle === 'image' && brand.logoImage) {
+    return <img src={brand.logoImage} alt={brand.displayName} style={{ height: size, maxWidth: compact ? size : 150 }} className="object-contain object-left" />;
+  }
+  if (brand.logoStyle === 'wordmark' && !compact) {
+    return (
+      <span className="flex items-baseline gap-1 leading-none" style={{ color: brand.primary }}>
+        <span className="text-[19px] font-bold tracking-tight">{brand.displayName}</span>
+        <span className="w-1.5 h-1.5 rounded-full" style={{ background: brand.primary }} />
+      </span>
+    );
+  }
+  return (
+    <span className="rounded-md flex items-center justify-center font-bold shrink-0" style={{ width: size, height: size, background: brand.primary, color: themeStyle(brand)['--brand-fg'], fontSize: size * 0.4 }}>
+      {initials}
+    </span>
+  );
+}
+
 // ── shell ───────────────────────────────────────────────────────────
 const SIDEBAR_KEY = 'oaas.sidebar';
 const readCollapsed = () => {
@@ -55,7 +92,7 @@ export function Shell({ brand, nav, footer, children }) {
         <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5">
           {nav.map((n) => (
             <NavLink key={n.to} to={n.to} end={n.end} title={collapsed ? n.label : undefined}
-              className={({ isActive }) => `relative flex items-center gap-2.5 h-8 rounded-md text-[13px] ${collapsed ? 'justify-center' : 'px-2.5'} ${isActive ? 'bg-white text-slate-900 font-medium shadow-[0_0_0_1px_#e5e7eb]' : 'text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'}`}>
+              className={({ isActive }) => `relative flex items-center gap-2.5 h-8 rounded-md text-[13px] ${collapsed ? 'justify-center' : 'px-2.5'} ${isActive ? 'bg-brand/10 text-brand font-medium' : 'text-slate-600 hover:bg-slate-200/50 hover:text-slate-900'}`}>
               {n.icon && <n.icon className="w-4 h-4 shrink-0" strokeWidth={1.75} />}
               {!collapsed && <span className="flex-1 truncate">{n.label}</span>}
               {n.badge ? (collapsed
@@ -275,7 +312,7 @@ export function Badge({ children, tone = 'slate' }) {
 }
 
 export const btn = {
-  primary: 'inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-md text-[13px] font-medium text-white bg-slate-900 hover:bg-slate-800 disabled:opacity-40 transition',
+  primary: 'inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-md text-[13px] font-medium text-[color:var(--brand-fg)] bg-brand hover:bg-brand/90 disabled:opacity-40 transition',
   secondary: 'inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-md text-[13px] font-medium text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 disabled:opacity-40 transition',
   ghost: 'inline-flex items-center justify-center gap-1.5 h-8 px-2.5 rounded-md text-[13px] text-slate-600 hover:bg-slate-100 disabled:opacity-40 transition',
 };

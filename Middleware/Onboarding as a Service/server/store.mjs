@@ -18,7 +18,7 @@ import path from 'node:path';
 import { PLATFORM } from './config.mjs';
 
 const FILE = path.join(PLATFORM.dataDir, 'store.json');
-const EMPTY = { index: {}, relationships: [], disclosures: [], submissions: [], reviews: [], merges: [], activity: [] };
+const EMPTY = { index: {}, relationships: [], disclosures: [], submissions: [], reviews: [], merges: [], activity: [], brands: {} };
 
 let db = load();
 
@@ -89,6 +89,10 @@ export const store = {
   addActivity(a) { (db.activity ||= []).push(a); if (db.activity.length > 200) db.activity = db.activity.slice(-200); save(); },
   activity: () => db.activity || [],
 
+  // white-label brands saved from the platform's Branding page (kept when the demo is reset)
+  brand: (id) => (db.brands || {})[id] || {},
+  setBrand(id, b) { db.brands ||= {}; if (b) db.brands[id] = b; else delete db.brands[id]; save(); },
+
   stats: () => ({ indexKeys: Object.keys(db.index).length }),
-  reset() { db = structuredClone(EMPTY); save(); },
+  reset() { db = { ...structuredClone(EMPTY), brands: db.brands || {} }; save(); },
 };

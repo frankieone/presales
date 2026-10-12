@@ -75,6 +75,15 @@ Business onboarding takes at least 25 seconds (`MIN_BUSINESS_RESPONSE_MS`), long
 
 Test people are FrankieOne's [published UAT test identities](https://docs.frankieone.com/docs/uat-test-data). Keep their details exactly as published.
 
+### White labelling
+
+Each intermediary's console carries the intermediary's own brand: display name, logo (monogram, wordmark or an uploaded image), colour, font and web address, with an optional "Powered by" line for the platform. FrankieOne never appears in an intermediary's console. The browser tab, its icon and the client file PDF are branded too.
+
+18. **Platform operations** → **Branding** → pick an intermediary, change its colour, logo or font, and watch the preview, shown in a browser window at the intermediary's own address. **Save brand**, then **Open … console** to see it live.
+19. Sign in as Northgate, Bluewave and Kestrel in turn: three consoles, three brands, one platform and one FrankieOne account.
+
+Brands are kept in `data/store.json` (they survive **Reset demo**). Defaults for the three named intermediaries are in `server/brand.mjs`; the other 297 get a default brand from their name and colour. In production the web address is a custom domain pointed at the platform, which picks the brand from the host name.
+
 ## How it maps onto FrankieOne
 
 | Platform concept | In FrankieOne |

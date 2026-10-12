@@ -218,7 +218,7 @@ export default function Onboard() {
       <div className="flex-1 min-h-0 overflow-y-auto">
         <div className="max-w-3xl mx-auto px-6 pt-6 pb-10">
           <h1 className="text-[20px] font-semibold text-slate-900">New client</h1>
-          <p className="mt-1 text-[13px] text-slate-500">Sent to {im.platform} for verification. Takes about {wait} seconds.</p>
+          <p className="mt-1 text-[13px] text-slate-500">Sent for identity verification. Takes about {wait} seconds.</p>
           <div className="mt-5">
             <Segmented value={kind} onChange={setKind} options={[['INDIVIDUAL', 'Individual', User], ['BUSINESS', 'Business', Building2]]} />
           </div>

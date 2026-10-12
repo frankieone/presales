@@ -467,7 +467,7 @@ function printSections(f, full) {
 }
 
 /** Open the client file as a printable page; the browser's print dialog saves it as a PDF. */
-export function printFile(f, { title, subtitle, full }) {
+export function printFile(f, { title, subtitle, full, brand }) {
   const w = window.open('', '_blank');
   if (!w) return;
   const people = (f.people || []).map((p) => `<section class="person"><h1 style="font-size:16px">${esc(p.role)}: ${esc(p.name)}</h1>${printSections(p, full)}</section>`).join('');
@@ -476,7 +476,9 @@ export function printFile(f, { title, subtitle, full }) {
     h1{font-size:20px;margin:0}h2{font-size:13px;margin:22px 0 6px;text-transform:uppercase;letter-spacing:.05em;color:#475569}
     table{width:100%;border-collapse:collapse}th,td{text-align:left;vertical-align:top;padding:4px 6px;border-bottom:1px solid #e2e8f0}th{font-size:10px;color:#64748b;text-transform:uppercase}
     small{color:#64748b}.meta{color:#64748b;margin-top:4px}.person{margin-top:28px;padding-top:12px;border-top:2px solid #0f172a;break-inside:avoid-page}
-  </style></head><body><h1>${esc(title)}</h1><p class="meta">${esc(subtitle)} · generated ${esc(fmt(new Date().toISOString()))}</p>
+    .brandbar{display:flex;align-items:center;gap:10px;padding-bottom:12px;margin-bottom:18px;border-bottom:3px solid ${brand?.primary || '#0f172a'}}
+    .brandbar img{height:28px}.brandbar b{font-size:16px;color:${brand?.primary || '#0f172a'}}
+  </style></head><body>${brand ? `<div class="brandbar">${brand.logoStyle === 'image' && brand.logoImage ? `<img src="${esc(brand.logoImage)}" alt="">` : ''}<b>${esc(brand.displayName)}</b><small>${esc(brand.tagline || '')}</small></div>` : ''}<h1>${esc(title)}</h1><p class="meta">${esc(subtitle)} · generated ${esc(fmt(new Date().toISOString()))}</p>
   ${printSections(f, full)}${people}<script>window.onload=()=>window.print()<\/script></body></html>`);
   w.document.close();
 }

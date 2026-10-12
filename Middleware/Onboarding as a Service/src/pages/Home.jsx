@@ -1,12 +1,20 @@
-import { useNavigate } from 'react-router-dom';
+import { useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowRight, Building2, Check, Lock, Server, ShieldCheck, X } from 'lucide-react';
 import { setSession } from '../api';
+import { BrandLogo } from '../components/ui';
 
 /** Presenter start page: sign in as an intermediary, or open the platform's own view. */
 export default function Home({ demo }) {
   const navigate = useNavigate();
   const asIntermediary = (im) => { setSession({ role: 'intermediary', token: im.token, id: im.id }); navigate('/console'); };
   const asPlatform = () => { setSession({ role: 'platform', token: demo.operatorToken }); navigate('/platform'); };
+  // /?as=northgate opens that intermediary's console straight away (used by the Branding page).
+  const [params] = useSearchParams();
+  useEffect(() => {
+    const im = demo.intermediaries.find((i) => i.id === params.get('as'));
+    if (im) asIntermediary(im);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const steps = [
     { icon: Building2, title: 'Intermediaries', text: 'Advisers and brokers onboard clients, individuals or businesses, in their own console or through the API.', note: 'Each sees only its own clients.' },
@@ -61,12 +69,10 @@ export default function Home({ demo }) {
         {demo.intermediaries.map((im) => (
           <button key={im.id} onClick={() => asIntermediary(im)}
             className="group text-left bg-white rounded-2xl border border-slate-200/80 p-6 hover:border-slate-300 hover:shadow-md transition">
-            <span className="w-11 h-11 rounded-xl flex items-center justify-center text-white" style={{ background: im.colour }}>
-              <Building2 className="w-5 h-5" />
-            </span>
+            <span className="h-9 flex items-center"><BrandLogo brand={im.brand} size={36} /></span>
             <p className="mt-4 text-[15px] font-semibold text-slate-900">{im.name}</p>
             <p className="text-sm text-slate-500">{im.kind}</p>
-            <p className="mt-4 text-xs font-mono text-slate-400">{im.workflow}</p>
+            <p className="mt-4 text-xs font-mono text-slate-400">{im.brand.domain || im.workflow}</p>
           </button>
         ))}
       </div>

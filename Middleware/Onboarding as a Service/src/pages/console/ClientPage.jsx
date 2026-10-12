@@ -43,7 +43,7 @@ export default function ClientPage() {
     try { await changed(await getClient(handle)); } catch (e) { setError(e.message); } finally { setBusy(''); }
   };
   const remove = async () => {
-    if (!window.confirm(`Remove ${client.name} from ${im.name}'s clients? Only your relationship ends.`)) return;
+    if (!window.confirm(`Remove ${client.name} from ${im.brand.displayName}'s clients? Only your relationship ends.`)) return;
     try { await removeClient(handle); reload(); navigate('/console'); } catch (e) { setError(e.message); }
   };
   const upload = async (body) => changed(await uploadDocument(handle, { ...body, person: subject?.personHandle }));
@@ -181,7 +181,7 @@ export default function ClientPage() {
         {busy === 'refresh' && <span className="text-[13px] text-slate-500 inline-flex items-center gap-1.5"><Loader2 className="w-4 h-4 animate-spin" /> Checking status…</span>}
         <Menu className={btn.ghost} label={<MoreHorizontal className="w-4 h-4" />}>
           <button data-close disabled={!!busy} onClick={refresh} className={menuItem}><RefreshCw className="w-4 h-4" /> Check status</button>
-          <button data-close disabled={!file} onClick={() => printFile(file, { title: `Client file: ${client.name}`, subtitle: `${im.name} · reference ${client.clientRef}` })} className={menuItem}><Download className="w-4 h-4" /> Download client file (PDF)</button>
+          <button data-close disabled={!file} onClick={() => printFile(file, { title: `Client file: ${client.name}`, subtitle: `Reference ${client.clientRef}`, brand: im.brand })} className={menuItem}><Download className="w-4 h-4" /> Download client file (PDF)</button>
           <button data-close onClick={remove} className={`${menuItem} text-red-700`}><UserMinus className="w-4 h-4" /> Client has left</button>
         </Menu>
       </>} />
