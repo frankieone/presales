@@ -46,6 +46,8 @@ export const POLICY = {
   // reused onboarding can't be told apart from a fresh one by timing. Set it
   // above the slowest normal path (a new record runs two workflows).
   minResponseMs: Number(setting('MIN_RESPONSE_MS', '10000')),
+  // The same for business clients, which verify several people.
+  minBusinessResponseMs: Number(setting('MIN_BUSINESS_RESPONSE_MS', '25000')),
   // Submissions per intermediary per minute, against probing.
   ratePerMinute: Number(setting('RATE_PER_MINUTE', '30')),
   // How long checks already held count towards another onboarding. Applied in
@@ -70,10 +72,12 @@ export const POLICY = {
  * through (a permitted list fails closed).
  */
 export const PERMITTED_FIELDS = [
-  'handle', 'clientRef', 'name', 'dateOfBirth',
+  'kind', 'handle', 'clientRef', 'name', 'dateOfBirth', 'businessType',
   'status', 'riskBand', 'method', 'completedAt',
-  'actions', 'createdAt', 'updatedAt',
+  'actions', 'people', 'createdAt', 'updatedAt',
 ];
+/** For a business client, each person is reported with these fields only. */
+export const PERMITTED_PERSON_FIELDS = ['name', 'role', 'status'];
 
 /**
  * The named intermediaries the demo is presented with, each on its own
@@ -111,6 +115,23 @@ export const INTERMEDIARIES = [...NAMED, ...GENERATED];
  * for example someone who used a different document at each intermediary.
  */
 export const DUPLICATE_WORKFLOW = setting('DUPLICATE_WORKFLOW', 'AUS-Basic2V-TwoPlus-Duplicate');
+
+/**
+ * The business registry check, run on a business client that has an ABN or
+ * ACN. Businesses without either (many trusts and partnerships) have no
+ * register to check, so the intermediary is asked for the document that
+ * establishes the business instead.
+ */
+export const BUSINESS_WORKFLOW = setting('BUSINESS_WORKFLOW', 'GLB-Organization-Profile');
+
+/** Roles a person can hold in a business client, as FrankieOne relationship roles. */
+export const ROLES = {
+  DIRECTOR: { code: 'DR', description: 'Director' },
+  TRUSTEE: { code: 'TRUSTEE', description: 'Trustee' },
+  PARTNER: { code: 'PARTNER', description: 'Partner' },
+  BENEFICIAL_OWNER: { code: 'UBO', description: 'Beneficial owner' },
+  SIGNATORY: { code: 'SIGNATORY', description: 'Authorised signatory' },
+};
 export const NAMED_IDS = NAMED.map((i) => i.id);
 export const byId = Object.fromEntries(INTERMEDIARIES.map((i) => [i.id, i]));
 

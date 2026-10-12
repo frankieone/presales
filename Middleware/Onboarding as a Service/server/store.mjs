@@ -10,13 +10,15 @@
  *   submissions    every submission per intermediary, for probing controls.
  *   reviews        possible duplicates held for a compliance decision.
  *   merges         every merge, with its reason, so it can be reversed.
+ *   activity       step-by-step record of what the platform did for each
+ *                  submission and decision (for the platform view only).
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import { PLATFORM } from './config.mjs';
 
 const FILE = path.join(PLATFORM.dataDir, 'store.json');
-const EMPTY = { index: {}, relationships: [], disclosures: [], submissions: [], reviews: [], merges: [] };
+const EMPTY = { index: {}, relationships: [], disclosures: [], submissions: [], reviews: [], merges: [], activity: [] };
 
 let db = load();
 
@@ -78,6 +80,8 @@ export const store = {
   merge: (id) => db.merges.find((m) => m.id === id),
   merges: () => db.merges,
   touch() { save(); },
+  addActivity(a) { (db.activity ||= []).push(a); if (db.activity.length > 200) db.activity = db.activity.slice(-200); save(); },
+  activity: () => db.activity || [],
 
   stats: () => ({ indexKeys: Object.keys(db.index).length }),
   reset() { db = structuredClone(EMPTY); save(); },

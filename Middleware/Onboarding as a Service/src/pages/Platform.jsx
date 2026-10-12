@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ShieldCheck, RefreshCw, LogOut, Trash2, Repeat, GitMerge, AlertTriangle, Undo2, Loader2 } from 'lucide-react';
+import { ShieldCheck, RefreshCw, LogOut, Trash2, Repeat, GitMerge, AlertTriangle, Undo2, Loader2, Activity, Building2, User } from 'lucide-react';
 import { decideReview, forgetIndex, getSession, network, resetDemo, reverseMerge, setSession } from '../api';
 import { StatusPill } from './Console';
 
@@ -68,16 +68,41 @@ export default function Platform({ demo }) {
               <Stat label="Onboardings on a record already held" value={data.reusedOnboardings} hint={data.reviews.length ? `${data.reviews.length} awaiting a decision` : undefined} />
             </div>
 
+            <h2 className="mt-10 text-lg font-semibold text-slate-900 flex items-center gap-2"><Activity className="w-5 h-5 text-brand" /> What the platform did</h2>
+            <p className="text-sm text-slate-500">Each submission and decision, step by step: what the platform decided itself, and what it asked FrankieOne to do. Updates every few seconds.</p>
+            <div className="mt-3 space-y-3">
+              {data.activity.length === 0 && <p className="text-sm text-slate-400">Nothing yet. Onboard a client as an intermediary, in another tab.</p>}
+              {data.activity.slice(0, 6).map((a) => (
+                <div key={a.id} className="bg-white rounded-xl border border-slate-200 p-4">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <p className="font-medium text-slate-900">{a.title} <span className="font-mono text-xs text-slate-400">{a.clientRef}</span></p>
+                    <span className="text-xs text-slate-400 whitespace-nowrap">{fmt(a.at)}</span>
+                  </div>
+                  <ol className="mt-2 space-y-1.5">
+                    {a.steps.map((s, i) => (
+                      <li key={i} className="flex gap-2 text-sm">
+                        <span className={`mt-0.5 shrink-0 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded ${s.kind === 'frankieone' ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-600'}`}>
+                          {s.kind === 'frankieone' ? 'FrankieOne' : 'Platform'}
+                        </span>
+                        <span className="text-slate-600">{s.text}</span>
+                      </li>
+                    ))}
+                  </ol>
+                  {a.result && <p className="mt-2 text-xs text-slate-500">Result: {a.result}</p>}
+                </div>
+              ))}
+            </div>
+
             {data.reviews.length > 0 && (
               <>
                 <h2 className="mt-10 text-lg font-semibold text-slate-900 flex items-center gap-2">
                   <AlertTriangle className="w-5 h-5 text-amber-500" /> Needs a decision
                 </h2>
-                <p className="text-sm text-slate-500">The identity index didn't recognise these submissions, but FrankieOne's duplicate check found a possible match in the network. They didn't meet the merge policy, so a person decides. The intermediary sees only that the application is in review.</p>
+                <p className="text-sm text-slate-500">The identity index didn't recognise these submissions, but a possible match was found in the network: by FrankieOne's duplicate check for people, or by name and postcode for a business with no ABN or ACN. They didn't meet the merge policy, so a person decides. The intermediary sees only that the application is in review.</p>
                 {data.reviews.map((rv) => (
                   <div key={rv.id} className="mt-4 bg-white rounded-xl border border-amber-200">
                     <div className="px-5 py-3 border-b border-slate-100 text-sm text-slate-600">
-                      Possible duplicate · submitted by <span className="font-medium text-slate-900">{rv.intermediary}</span> · {fmt(rv.at)}
+                      Possible {rv.kind === 'business' ? 'same business' : 'duplicate'} · submitted by <span className="font-medium text-slate-900">{rv.intermediary}</span> · {fmt(rv.at)}
                     </div>
                     {rv.candidates.map((c) => (
                       <div key={c.entityId} className="grid md:grid-cols-2 gap-0 border-b border-slate-100 last:border-0">
@@ -96,10 +121,10 @@ export default function Platform({ demo }) {
                     ))}
                     <div className="px-5 py-3 flex gap-2 justify-end bg-slate-50 rounded-b-xl">
                       <button disabled={!!busy} onClick={() => act(rv.id, () => decideReview(rv.id, 'different'))}
-                        className="px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white">Different people</button>
+                        className="px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white">{rv.kind === 'business' ? 'Different businesses' : 'Different people'}</button>
                       <button disabled={!!busy} onClick={() => act(rv.id, () => decideReview(rv.id, 'merge', rv.candidates[0].entityId))}
                         className="px-3 py-2 rounded-lg bg-navy text-white text-sm inline-flex items-center gap-1.5">
-                        {busy === rv.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <GitMerge className="w-4 h-4" />} Same person: merge
+                        {busy === rv.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <GitMerge className="w-4 h-4" />} {rv.kind === 'business' ? 'Same business' : 'Same person'}: merge
                       </button>
                     </div>
                   </div>
@@ -108,22 +133,26 @@ export default function Platform({ demo }) {
             )}
 
             <h2 className="mt-10 text-lg font-semibold text-slate-900">Investors across the network</h2>
-            <p className="text-sm text-slate-500">One FrankieOne record per person. Each intermediary holding them has its own reference, handle and verification.</p>
+            <p className="text-sm text-slate-500">One FrankieOne record per person or business. Each intermediary holding them has its own reference, handle and verification. A person behind a business client is held in that role, on the same record as when they're a client in their own right.</p>
             <div className="mt-4 space-y-4">
               {data.investors.length === 0 && <p className="text-sm text-slate-400">No investors yet.</p>}
               {data.investors.map((inv) => (
                 <div key={inv.entityId} className="bg-white rounded-xl border border-slate-200">
                   <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between">
                     <div>
-                      <p className="font-semibold text-slate-900">{inv.name} <span className="font-normal text-slate-500 text-sm">· born {inv.dateOfBirth}</span></p>
-                      <p className="text-xs text-slate-400 font-mono">FrankieOne entity {inv.entityId}</p>
+                      <p className="font-semibold text-slate-900 flex items-center gap-1.5">
+                        {inv.entityType === 'ORGANIZATION' ? <Building2 className="w-4 h-4 text-slate-400" /> : <User className="w-4 h-4 text-slate-400" />}
+                        {inv.name}
+                        <span className="font-normal text-slate-500 text-sm">· {inv.entityType === 'ORGANIZATION' ? `${inv.businessType}, ${inv.registration || 'no ABN or ACN'}` : `born ${inv.dateOfBirth}`}</span>
+                      </p>
+                      <p className="text-xs text-slate-400 font-mono">FrankieOne {inv.entityType === 'ORGANIZATION' ? 'organisation' : 'entity'} {inv.entityId}</p>
                     </div>
                     <span className="text-xs text-slate-500 text-right">
                       {inv.relationships.filter((r) => !r.removedAt).length} active {inv.relationships.filter((r) => !r.removedAt).length === 1 ? 'relationship' : 'relationships'}
-                      <button title="Presenter tool: drop this record's identity index entries, as if the client had never been indexed. The next submission then relies on FrankieOne's duplicate check."
+                      {inv.entityType !== 'ORGANIZATION' && <button title="Presenter tool: drop this record's identity index entries, as if the client had never been indexed. The next submission then relies on FrankieOne's duplicate check."
                         onClick={() => act(`f-${inv.entityId}`, () => forgetIndex(inv.entityId))} className="block ml-auto mt-0.5 text-[11px] text-slate-400 hover:text-slate-700 underline decoration-dotted">
                         {busy === `f-${inv.entityId}` ? 'Dropping…' : 'Drop index entry'}
-                      </button>
+                      </button>}
                     </span>
                   </div>
                   <table className="w-full text-sm">
@@ -140,10 +169,13 @@ export default function Platform({ demo }) {
                     <tbody>
                       {inv.relationships.map((r) => (
                         <tr key={`${r.intermediaryId}-${r.createdAt}`} className={`border-t border-slate-100 ${r.removedAt ? 'opacity-40' : ''}`}>
-                          <td className="px-5 py-2 text-slate-800">{r.intermediary}</td>
+                          <td className="px-5 py-2 text-slate-800">
+                            {r.intermediary}
+                            {r.role && <p className="text-xs text-slate-500">{r.role} of {r.business}</p>}
+                          </td>
                           <td className="px-5 py-2 font-mono text-xs">{r.clientRef}</td>
                           <td className="px-5 py-2 font-mono text-xs text-slate-500">{r.handle}</td>
-                          <td className="px-5 py-2 text-xs text-slate-500">{r.workflow}</td>
+                          <td className="px-5 py-2 text-xs text-slate-500">{r.workflow || (inv.entityType === 'ORGANIZATION' ? 'No register check' : '—')}</td>
                           <td className="px-5 py-2"><StatusPill status={r.status} /> <span className="text-xs text-slate-400 ml-1">{r.workflowStatus}</span></td>
                           <td className="px-5 py-2 text-xs text-slate-500">
                             {r.removedAt ? 'Left'
@@ -211,7 +243,7 @@ export default function Platform({ demo }) {
               <div>
                 <h2 className="text-lg font-semibold text-slate-900">Policies</h2>
                 <dl className="mt-3 bg-white rounded-xl border border-slate-200 p-4 grid grid-cols-2 gap-y-2 text-sm">
-                  <dt className="text-slate-500">Minimum response time</dt><dd>{data.policy.minResponseMs / 1000} s</dd>
+                  <dt className="text-slate-500">Minimum response time</dt><dd>{data.policy.minResponseMs / 1000} s, businesses {data.policy.minBusinessResponseMs / 1000} s</dd>
                   <dt className="text-slate-500">Submissions per intermediary</dt><dd>{data.policy.ratePerMinute} a minute</dd>
                   <dt className="text-slate-500">Evidence reuse window</dt><dd>{data.policy.reuseWindowDays} days</dd>
                   <dt className="text-slate-500">Concurrent FrankieOne calls</dt><dd>{data.policy.maxConcurrent}, shared fairly</dd>
@@ -236,7 +268,7 @@ function Side({ title, person, entityId, heldBy }) {
     <div className="px-5 py-4">
       <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">{title}</p>
       <p className="mt-1 font-semibold text-slate-900">{person?.name}</p>
-      <p className="text-sm text-slate-600">Born {person?.dateOfBirth}</p>
+      {person?.dateOfBirth ? <p className="text-sm text-slate-600">Born {person.dateOfBirth}</p> : <p className="text-sm text-slate-600">No ABN or ACN</p>}
       {person?.document && <p className="text-sm text-slate-600">{person.document.type.replace(/_/g, ' ').toLowerCase()} ending {person.document.last4}</p>}
       <p className="mt-1 text-xs text-slate-400">Held by {heldBy?.filter(Boolean).join(', ') || '—'} · <span className="font-mono">{entityId?.slice(0, 8)}</span></p>
     </div>

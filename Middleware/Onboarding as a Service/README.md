@@ -42,6 +42,18 @@ Every onboarding response takes at least the minimum response time (10 seconds b
 
 **Different people** on a held review keeps both records and verifies the new one on its own.
 
+### Business clients, with or without an ABN or ACN
+
+Clients can be businesses: companies, trusts, partnerships or other organisations, each with the people behind them (directors, trustees, partners, beneficial owners, signatories). Many trusts and partnerships have no ABN or ACN, so the platform doesn't require one.
+
+11. **Northgate Advisers** → **Onboard a client** → **Business** (or the demo helper's *Testone Family Trust*). No ABN or ACN, two trustees. The platform creates a business record, verifies each trustee (reusing a record if the person is already on the network) and links them with their role. With no register to check, Northgate sees **Action required: provide the document that establishes the business**, with each trustee's status.
+12. **Provide trust deed** → the document is recorded and the business is **Verified**.
+13. **Bluewave Brokers** → *Testone Holdings Pty Ltd*, with a made-up ACN. The register check runs and can't confirm it, so Bluewave is asked to check the number or provide a document.
+14. **Kestrel Wealth** → the same trust, again with no ABN. There's no number to match on, so the platform matches the normalised name and postcode. That's never enough to merge on its own, so the trust is held for a decision under **Needs a decision**, side by side.
+15. **Platform operations** → the trust is one organisation record, and James is one record held as Northgate's trustee, as Bluewave's director and (if onboarded directly) as Northgate's own client.
+
+Business onboarding takes at least 25 seconds (`MIN_BUSINESS_RESPONSE_MS`), long enough to cover a register check.
+
 Test people are FrankieOne's [published UAT test identities](https://docs.frankieone.com/docs/uat-test-data). Keep their details exactly as published.
 
 ## How it maps onto FrankieOne
@@ -64,6 +76,10 @@ Test people are FrankieOne's [published UAT test identities](https://docs.franki
 | Same person (merge) | `PATCH /v2/individuals/{newEntityId}/results/duplicate` with `TRUE_POSITIVE_REJECT` (keep the existing record), then the reference moves and the intermediary's workflow runs on the survivor |
 | Different people | Same call with `FALSE_POSITIVE`, then the intermediary's workflow runs on the new record |
 | Reverse a merge | Same call with `FALSE_POSITIVE` on the confirmed match, which restores the retired record |
+| Business client | `POST /v2/organizations` with the intermediary's reference (the record holds the name, type, address and any ABN or ACN) |
+| People behind it | Each verified as an individual (above), then `PUT /v2/organizations/{entityId}/relationships` with their role |
+| ABN or ACN supplied | `POST /v2/organizations/{entityId}/serviceprofiles/{service}/workflows/{BUSINESS_WORKFLOW}/execute`, then polling `GET .../executions/{executionId}` for the register result |
+| No ABN or ACN | No register call. The intermediary is asked for the establishing document (trust deed, partnership agreement), which in production is attached with `POST /v2/organizations/{entityId}/documents` |
 
 ## What the platform layer does
 
@@ -72,7 +88,7 @@ All in `server/`:
 | Component | File | What it does |
 |---|---|---|
 | Intermediary access | `tier1.mjs` | One token per intermediary; a token reaches that intermediary's clients only |
-| Identity index | `tier1.mjs`, `store.mjs` | HMACs of identity document type, country and number, pointing at FrankieOne records. Email and phone never match on their own |
+| Identity index | `tier1.mjs`, `store.mjs` | HMACs of identity document type, country and number, pointing at FrankieOne records. Email and phone never match on their own. Businesses are keyed by ABN or ACN; without one, by normalised name and postcode, which only ever holds a submission for review |
 | Handle derivation | `tier1.mjs` | A one-way handle per intermediary per investor, so two intermediaries comparing lists can't match them |
 | Response builder | `tier1.mjs` | Copies only the fields in `PERMITTED_FIELDS` (`config.mjs`). A new field in FrankieOne's response is ignored until it's added (fails closed) |
 | Outcome mapping | `tier1.mjs` | Workflow results become `VERIFIED`, `IN_REVIEW`, `ACTION_REQUIRED` or `DECLINED`, with a risk band rather than a score, and neutral messages |
@@ -93,4 +109,4 @@ Policies (minimum response time, rate limit, reuse window, concurrency, automati
 - **Shared demo account**: the demo account holds many copies of the same UAT test people from other demos, and FrankieOne's duplicate check matches them all. With `SHARED_DEMO_ACCOUNT=true` (the default), matches against records that aren't the platform's are set aside. On a dedicated account, set it to `false`: every record is the platform's, so every match is a candidate.
 - **The start page** hands out intermediary tokens so a presenter can switch between them. In production, tokens are issued privately and the platform view sits behind staff sign-in on a separate host.
 
-Not built yet, but covered by the same design: company onboarding with directors and owners, an intermediary updating a client's details, routing ongoing monitoring alerts to every intermediary holding a person, a network blocklist, and intermediaries who supply their own KYC under reliance.
+Not built yet, but covered by the same design: uploading the establishing document itself, an intermediary updating a client's details, routing ongoing monitoring alerts to every intermediary holding a person, a network blocklist, and intermediaries who supply their own KYC under reliance.

@@ -34,6 +34,7 @@ export const me = () => call('GET', '/api/v1/me');
 export const listClients = () => call('GET', '/api/v1/clients');
 export const getClient = (handle) => call('GET', `/api/v1/clients/${handle}`);
 export const submitClient = (body) => call('POST', '/api/v1/clients', body);
+export const provideDocument = (handle, type) => call('POST', `/api/v1/clients/${handle}/documents`, { type });
 export const removeClient = (handle) => call('DELETE', `/api/v1/clients/${handle}`);
 
 // platform view

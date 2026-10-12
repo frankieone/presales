@@ -15,7 +15,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { FRANKIE, NAMED_IDS, PLATFORM, POLICY, SECRET, byId } from './config.mjs';
-import { ClientError, decide, forgetIndex, intermediaryForToken, list, network, offboard, onboard, refresh, reverseMerge, tokenFor } from './tier1.mjs';
+import { ClientError, decide, forgetIndex, intermediaryForToken, list, network, offboard, onboard, provideDocument, refresh, reverseMerge, tokenFor } from './tier1.mjs';
 import { store } from './store.mjs';
 import { DEMO_PEOPLE } from './demo-people.mjs';
 
@@ -52,6 +52,8 @@ async function route(req, res) {
     const m = p.match(/^\/api\/v1\/clients\/(C-[A-Z0-9]+)$/);
     if (m && req.method === 'GET') return send(res, 200, await refresh(im, m[1]));
     if (m && req.method === 'DELETE') return send(res, 200, await offboard(im, m[1]));
+    const d = p.match(/^\/api\/v1\/clients\/(C-[A-Z0-9]+)\/documents$/);
+    if (d && req.method === 'POST') return send(res, 200, await provideDocument(im, d[1], await readBody(req)));
     return send(res, 404, { error: 'NOT_FOUND' });
   }
 

@@ -65,4 +65,30 @@ export const removeReference = (entityId, referenceId) =>
 export const resolveDuplicates = (entityId, processResultIds, manualStatus, text) =>
   call('PATCH', `/v2/individuals/${entityId}/results/duplicate`, { processResults: processResultIds, manualStatus, comment: { text } });
 
+// ── businesses ──────────────────────────────────────────────────────
+/** Create a business record. organizationType is free text: COMPANY, TRUST, PARTNERSHIP, OTHER. */
+export const createOrganization = (organization) => call('POST', '/v2/organizations', { organization });
+
+export const getOrganization = (entityId) => call('GET', `/v2/organizations/${entityId}`);
+
+/** Add one intermediary's client reference to a business record already held. */
+export const addOrganizationReference = (entityId, ref) =>
+  call('PATCH', `/v2/organizations/${entityId}`, { organization: { externalReferences: [ref] } });
+
+export const removeOrganizationReference = (entityId, referenceId) =>
+  call('DELETE', `/v2/organizations/${entityId}/externalreferences/${referenceId}`);
+
+/** Link a person to a business with their role (director, trustee, partner, owner). */
+export const linkPerson = (organizationId, individualId, role) =>
+  call('PUT', `/v2/organizations/${organizationId}/relationships`, {
+    entityRelationships: [{ entity: { entityId: individualId, entityType: 'INDIVIDUAL' }, relationships: [{ type: 'OFFICIAL', role }] }],
+  });
+
+/** Start a business registry check (asynchronous: returns a workflow execution ID). */
+export const checkRegistry = (organizationId, workflow, channel) =>
+  call('POST', `/v2/organizations/${organizationId}/serviceprofiles/${sp}/workflows/${workflow}/execute`, {}, channel);
+
+export const getRegistryCheck = (organizationId, workflow, executionId) =>
+  call('GET', `/v2/organizations/${organizationId}/serviceprofiles/${sp}/workflows/${workflow}/executions/${executionId}`);
+
 export const listWorkflows = () => call('GET', '/v2/workflows');
