@@ -1,0 +1,26 @@
+{
+  "name": "frankieone-onboarding-as-a-service",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Middleware example: one FrankieOne account behind a platform layer, with a scoped console per intermediary.",
+  "scripts": {
+    "dev": "node scripts/start.mjs",
+    "server": "node server/index.mjs",
+    "test": "node scripts/preflight.mjs",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "lucide-react": "^0.469.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-router-dom": "^7.18.4"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.5.2",
+    "autoprefixer": "^10.4.21",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^3.4.1",
+    "vite": "^7.2.4"
+  }
+}

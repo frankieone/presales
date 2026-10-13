@@ -38,3 +38,4 @@ safeguard exists. Describe the change, not the incident behind it.
 - **HostedOneSDK V2**: runs on port 4568
 - **KYB POC V1 ACME** (`acme-poc/`): runs on port 6513
 - **KYB V2 ACME**: additional project in the repo
+- **Middleware/Onboarding as a Service**: platform server on 8100, screens on 8101; settings in `.env.local` are server-side only
