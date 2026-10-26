@@ -52,3 +52,7 @@ next-env.d.ts
 # Not yet ready to publish — uncomment when it is:
 # !/EmbeddedOneSDK/
 
+
+# internal-presales-tune-up clone (private repo, customer data) - never commit.
+# Kept after the allowlist above so it wins even if re-included there.
+/Tune Up Monitoring/
