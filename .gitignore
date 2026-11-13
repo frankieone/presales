@@ -48,6 +48,7 @@ next-env.d.ts
 !/HostedOneSDK V2/
 !/KYB POC V1 ACME/
 !/KYB V2 ACME/
+!/Middleware/
 
 # Not yet ready to publish — uncomment when it is:
 # !/EmbeddedOneSDK/

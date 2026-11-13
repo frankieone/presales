@@ -1,0 +1,481 @@
+/**
+ * The client file: everything FrankieOne holds on a client, as one view.
+ *
+ *   verifications  every workflow run, with the checks that passed and failed
+ *   risk           the latest risk assessment and its factors
+ *   documents      identity documents, photos and scans, uploaded files
+ *   history        the audit trail, plus what the platform itself did
+ *
+ * Two versions of the same file:
+ *
+ *   intermediaryFile  what one intermediary sees: only its own verifications,
+ *                     the documents it supplied or collected, and the audit
+ *                     events from its own runs. A record shared with other
+ *                     intermediaries never shows their runs, documents or
+ *                     risk factors, so the file can't reveal who else holds
+ *                     the client. Risk is shown as a level and factors,
+ *                     without scores.
+ *   platformFile      the platform's compliance view: everything on the
+ *                     record, with each run and event attributed to the
+ *                     intermediary it was for.
+ */
+import { DUPLICATE_WORKFLOW, IDV_FLOW, POLICY, byId } from './config.mjs';
+import * as frankie from './frankie.mjs';
+import { store } from './store.mjs';
+import { ClientError } from './tier1.mjs';
+
+// ── plain-language labels ───────────────────────────────────────────
+const CHECKS = {
+  KYC: 'Name, date of birth and address matched against independent data sources',
+  IDV: 'Identity document verified',
+  AML: 'Sanctions, politically exposed person and adverse media screening',
+  MATCHLIST: 'Network blocklist',
+  DUPLICATE: 'Duplicate check across the network',
+  ORGANIZATION_DATA_FETCH: 'Business register check',
+  ORGANIZATION_PROFILE: 'Business register check',
+  OCR: 'Document read from photo',
+  BIOMETRICS: 'Selfie matched to document photo',
+  FRAUD: 'Fraud and device signals',
+};
+const HIDDEN_STEPS = new Set(['START', 'FINISH', 'DECISION', 'TOGGLE_MONITORING', 'RISK']);
+const RESULT = { PASS: 'Passed', CLEAR: 'Passed', COMPLETE: 'Complete', FAIL: 'Failed', REVIEW: 'Needs review', BLOCKED: 'Blocked', UNCHECKED: 'Not checked', NOT_APPLICABLE: 'Not applicable', IN_PROGRESS: 'In progress' };
+const DOC_TYPE = {
+  DRIVERS_LICENSE: 'Driver licence', PASSPORT: 'Passport', NATIONAL_HEALTH_ID: 'Medicare card', SELF_IMAGE: 'Selfie',
+  UTILITY_BILL: 'Utility bill', BANK_STATEMENT: 'Bank statement', TRUST_DEED: 'Trust deed', PARTNERSHIP_AGREEMENT: 'Partnership agreement',
+  ATTESTATION: 'Statutory declaration', REPORT: 'Report', OTHER: 'Other document',
+  CONSTITUTION: 'Constitution', CERTIFICATE_OF_REGISTRATION: 'Certificate of registration',
+};
+// Types the platform offers that FrankieOne files as OTHER, keeping the label in the filename.
+const SENT_AS = { CONSTITUTION: 'OTHER', CERTIFICATE_OF_REGISTRATION: 'OTHER' };
+const band = (level) => {
+  const l = String(level || '').toUpperCase();
+  return l.startsWith('UNACC') ? 'Unacceptable' : l === 'HIGH' ? 'High' : l === 'MEDIUM' ? 'Medium' : l === 'LOW' ? 'Low' : l ? l[0] + l.slice(1).toLowerCase() : null;
+};
+const STATUS_TEXT = { VERIFIED: 'Verified', IN_REVIEW: 'In review', ACTION_REQUIRED: 'Action required', DECLINED: 'Declined' };
+const last4 = (s) => (s ? String(s).slice(-4) : '');
+const workflowKind = (name) => (name === DUPLICATE_WORKFLOW ? 'Duplicate check'
+  : /organi[sz]ation/i.test(name || '') ? 'Business register check'
+  : /idv|daon|onesdk/i.test(name || '') ? 'ID verification (photo and selfie)'
+  : 'Onboarding verification');
+
+function checks(w) {
+  const steps = w.steps || {};
+  const list = [];
+  for (const [bucket, label] of [['passed', 'Passed'], ['failed', 'Failed'], ['incomplete', 'Incomplete']]) {
+    for (const s of steps[bucket] || []) {
+      if (HIDDEN_STEPS.has(s)) continue;
+      // A photo ID step that didn't run (no photo taken) in a run that passed on electronic checks wasn't needed.
+      const notDone = s === 'IDV' && label === 'Failed' && w.status === 'PASS';
+      list.push({ step: s, check: notDone ? 'Photo ID check' : CHECKS[s] || s.replace(/_/g, ' ').toLowerCase(), result: notDone ? 'Not done' : label });
+    }
+  }
+  return list;
+}
+
+const auditText = (e) => {
+  const step = e.stepName && !HIDDEN_STEPS.has(e.stepName) ? CHECKS[e.stepName] || e.stepName : null;
+  return [e.description, step && `(${step.toLowerCase()})`].filter(Boolean).join(' ');
+};
+
+// The audit trail records every internal step (initiated, evaluating, results ready). An
+// intermediary's history keeps what a reviewer cares about: each check's result, status and
+// risk changes, and anything a person did.
+const NOISE = /initiat|evaluating|results ready|enablement|step finished|entity was updated|workflow started/i;
+function keyEvents(events) {
+  const seen = new Set();
+  const out = [];
+  for (const e of events) {
+    if (NOISE.test(e.description || '')) continue;
+    // The run's completion, status and risk changes repeat what the checks and the outcome already say.
+    if (['WORKFLOW_COMPLETE', 'WORKFLOW_STATUS_CHANGE', 'WORKFLOW_RISK_CHANGE'].includes(e.type)) continue;
+    const step = CHECKS[e.stepName];
+    const text = step || e.description;
+    const key = `${e.workflowExecutionId}|${text}`;
+    if (!text || seen.has(key)) continue;
+    seen.add(key);
+    out.push({ at: e.timestamp, source: 'FrankieOne', text, result: RESULT[e.status] && e.status !== 'UNCHECKED' ? RESULT[e.status] : null });
+  }
+  return out;
+}
+
+// ── attribution: which relationship a run belongs to ────────────────
+const relsOn = (entityId) => store.allRelationships().filter((r) => r.entityId === entityId);
+const runIds = (rel) => new Set([...(rel.executionIds || []), rel.executionId, rel.registryExecutionId].filter(Boolean));
+
+/**
+ * The relationships a workflow run was for (one run can serve two: a person
+ * who is both a trustee and a client of the same intermediary), or
+ * ['platform'], or [] when it isn't the platform's.
+ */
+function ownersOf(w, rels) {
+  const direct = rels.filter((r) => runIds(r).has(w.workflowExecutionId));
+  if (direct.length) return direct;
+  if (w.workflowName === DUPLICATE_WORKFLOW) return ['platform'];
+  // A hosted ID check runs its own workflow: it belongs to whoever sent the most recent link before it started.
+  const started = Date.parse(w.startedAt || w.createdAt || 0);
+  const sent = rels.flatMap((r) => (r.idvRequests || []).map((q) => ({ r, at: Date.parse(q.at) })))
+    .filter((x) => x.at <= started).sort((a, b) => b.at - a.at)[0];
+  if (sent && workflowKind(w.workflowName).startsWith('ID verification')) return [sent.r];
+  return [];
+}
+
+async function loadRecord(entityId, entityType) {
+  const [profile, audit, documents] = await Promise.all([
+    frankie.getServiceProfile(entityId, entityType).catch(() => ({})),
+    frankie.listAudit(entityId).catch(() => []),
+    frankie.listDocuments(entityId, entityType).catch(() => ({})),
+  ]);
+  // The service profile summarises only the latest run of each workflow, so list every run of each one.
+  const summaries = profile.serviceProfile?.workflowSummaries || [];
+  const names = new Set([...summaries.map((w) => w.workflowName), ...relsOn(entityId).map((r) => r.workflow)].filter(Boolean));
+  const lists = await Promise.all([...names].map((n) => frankie.listExecutions(entityId, n, entityType).then((r) => r.workflowResults || []).catch(() => [])));
+  const latestRisk = summaries.filter((w) => w.riskAssessment).sort((a, b) => Date.parse(b.startedAt || 0) - Date.parse(a.startedAt || 0))[0]?.riskAssessment || null;
+  const runs = lists.flat().map((w) => ({ ...w, risk: [...(w.workflowStepResults || [])].reverse().find((st) => st.risk)?.risk || null }))
+    .sort((a, b) => Date.parse(b.startedAt || 0) - Date.parse(a.startedAt || 0));
+  const docs = Object.entries(documents).filter(([k, v]) => Array.isArray(v) && k !== 'requestId').flatMap(([cls, list]) => list.map((d) => ({ ...d, class: d.class || cls })))
+    // Placeholder entries with nothing in them (no type, number or file) are noise.
+    .filter((d) => d.documentId && (d.type || d.primaryIdentifier || d.attachments?.length));
+  return { profile: profile.serviceProfile || {}, runs, latestRisk, audit, docs };
+}
+
+const verification = (w, scores) => ({
+  ref: w.workflowExecutionId,
+  workflow: w.workflowName,
+  // A hosted ID check run (document photo and selfie), so its photo ID step counts as biometrics.
+  photoId: workflowKind(w.workflowName).startsWith('ID verification'),
+  startedAt: w.startedAt, endedAt: w.endedAt,
+  result: RESULT[w.status] || w.status || 'In progress',
+  monitoring: w.lifecyclePhase === 'MONITORING',
+  riskLevel: band(w.risk?.level),
+  ...(scores || POLICY.shareRiskScore ? { riskScore: w.risk?.overallScore } : {}),
+  checks: checks(w),
+  issues: (w.issues || []).map((i) => i.description || i.category || i.issue).filter(Boolean),
+});
+
+/** Risk: the level from the latest run in view, and the factors those runs contributed. */
+function riskFrom(runs, ra, keep, scores) {
+  const latest = runs.find((w) => w.risk);
+  if (!latest && !ra) return null;
+  return {
+    level: band(latest?.risk?.level || ra?.workflowRiskLevel),
+    ...(scores || POLICY.shareRiskScore ? { score: latest?.risk?.overallScore } : {}),
+    ...(scores ? { entityLevel: band(ra?.riskLevel), entityScore: ra?.riskScore } : {}),
+    assessedAt: latest?.endedAt || ra?.updatedAt,
+    factors: (ra?.riskFactors || []).filter((f) => f.status !== 'OVERRIDDEN' && keep(f)).map((f) => ({
+      factor: f.description || f.factor, value: f.value, ...(scores ? { score: f.score, status: f.status } : {}),
+    })),
+  };
+}
+
+function documentView(d, scores) {
+  return {
+    documentId: d.documentId,
+    type: DOC_TYPE[d.type] || (d.type ? d.type.replace(/_/g, ' ').toLowerCase() : 'Unlabelled document'),
+    class: d.class, country: d.country,
+    number: d.primaryIdentifier ? `•••• ${last4(d.primaryIdentifier)}` : null,
+    ...(scores && d.primaryIdentifier ? { fullNumber: d.primaryIdentifier } : {}),
+    addedAt: d.createdAt,
+    attachments: (d.attachments || []).map((a) => ({ attachmentId: a.attachmentId, filename: a.filename, mimeType: a.mimeType, side: a.side || null, type: a.type || null, addedAt: a.createdAt })),
+  };
+}
+
+// ── activity: workflows, risk assessments, comments, documents ──────
+// A comment left on the record (the audit log carries it, with the author as its source), or a
+// note left with a person's action, such as a duplicate decision. Notes the workflows leave
+// themselves are not comments.
+const commentOf = (e) => (e.userComment?.text && !/by monitoring step/i.test(e.userComment.text)
+  ? { commentId: e.userComment.commentId, text: e.userComment.text, author: e.source || 'FrankieOne', action: e.functionName === 'AddComment' ? null : e.description } : null);
+
+function activityFrom({ runs, audit, scores, labelFor, keepComment }) {
+  const ids = new Set(runs.map((w) => w.workflowExecutionId));
+  const items = runs.filter((w) => w.lifecyclePhase !== 'MONITORING').map((w) => ({
+    type: 'workflow', at: w.startedAt, workflow: w.workflowName, result: RESULT[w.status] || w.status || 'In progress', ref: w.workflowExecutionId,
+    riskLevel: band(w.risk?.level), ...(scores ? { riskScore: w.risk?.overallScore } : {}), for: labelFor?.(w.workflowExecutionId),
+  }));
+  for (const e of audit) {
+    if (e.type === 'WORKFLOW_RISK_CHANGE' && ids.has(e.workflowExecutionId)) {
+      items.push({ type: 'risk', at: e.timestamp, level: band(e.riskLevel), ...(scores ? { score: e.riskScore } : {}), workflow: e.workflowName, for: labelFor?.(e.workflowExecutionId) });
+    } else if (/RISK/.test(e.type) && !e.workflowExecutionId && e.riskLevel && keepComment === undefined) {
+      items.push({ type: 'risk', at: e.timestamp, level: band(e.riskLevel), ...(scores ? { score: e.riskScore } : {}), by: e.source || null, manual: true });
+    }
+  }
+  const seenComments = new Set();
+  for (const e of audit) {
+    const c = commentOf(e);
+    if (!c || seenComments.has(c.commentId) || (keepComment && !keepComment(c))) continue;
+    seenComments.add(c.commentId);
+    items.push({ type: 'comment', at: e.timestamp, ...c });
+  }
+  return items;
+}
+
+// ── what the platform did, for one relationship ─────────────────────
+function platformEvents(rel) {
+  const out = [{ at: rel.createdAt, source: 'Platform', text: rel.kind === 'business' ? 'Business submitted for verification' : rel.kind === 'related' ? `Submitted as ${String(rel.roleLabel || 'person').toLowerCase()} of a business client` : 'Submitted for verification' }];
+  if (rel.completedAt) out.push({ at: rel.completedAt, source: 'Platform', text: `Status set to ${STATUS_TEXT[rel.status] || rel.status}` });
+  for (const u of rel.uploads || []) out.push({ at: u.at, source: 'Platform', text: `Document added: ${u.label}` });
+  for (const q of rel.idvRequests || []) out.push({ at: q.at, source: 'Platform', text: 'ID verification link sent to the client' });
+  return out;
+}
+
+// ── the intermediary's file ─────────────────────────────────────────
+async function scopedFile(rel, entityType) {
+  const rels = relsOn(rel.entityId);
+  const { runs, latestRisk, audit, docs } = await loadRecord(rel.entityId, entityType);
+  const mineRuns = runs.filter((w) => ownersOf(w, rels).includes(rel));
+  const mineIds = new Set(mineRuns.map((w) => w.workflowExecutionId));
+  // Photos and selfies captured by a hosted ID check this intermediary sent: added after its link, by the end of its run.
+  const idvWindows = mineRuns.filter((w) => workflowKind(w.workflowName).startsWith('ID verification')).map((w) => {
+    const sent = (rel.idvRequests || []).map((q) => Date.parse(q.at)).filter((t) => t <= Date.parse(w.startedAt)).sort((x, y) => y - x)[0];
+    return [sent ?? Date.parse(w.startedAt), Date.parse(w.endedAt || w.startedAt) + 60_000];
+  });
+  const capturedByMyIdv = (d) => idvWindows.some(([from, to]) => Date.parse(d.createdAt) >= from && Date.parse(d.createdAt) <= to);
+
+  const submitted = rel.document;
+  const mineDocs = docs.filter((d) =>
+    (rel.documentIds || []).includes(d.documentId)
+    || (submitted && d.type === submitted.type && last4(d.primaryIdentifier) === submitted.last4)
+    || (capturedByMyIdv(d) && !store.allRelationships().some((r) => r !== rel && (r.documentIds || []).includes(d.documentId))));
+
+  // Verifications satisfied by reusing a passed run: shown as this intermediary's own workflow, at
+  // the time of reuse. The run they relied on, and who it was first run for, stay with the platform.
+  const sources = [];
+  const reused = (rel.reuses || []).map((u) => {
+    const src = runs.find((w) => w.workflowExecutionId === u.sourceExecutionId);
+    if (!src) return null;
+    sources.push(src);
+    return { ...verification(src, false), ref: `reuse-${u.at}`, workflow: u.workflow, startedAt: u.at, endedAt: u.at, photoId: false };
+  }).filter(Boolean);
+  const byTime = (a, b) => Date.parse(b.startedAt || 0) - Date.parse(a.startedAt || 0);
+  const riskRuns = [...mineRuns, ...sources].sort(byTime);
+
+  return {
+    verifications: [...reused, ...mineRuns.filter((w) => w.lifecyclePhase !== 'MONITORING').map((w) => verification(w, false))].sort(byTime),
+    // Risk factors are held on the record, not per run. Any that describe a document this
+    // intermediary didn't supply are left out, as they'd show another intermediary's submission.
+    risk: riskRuns.length ? riskFrom(riskRuns, latestRisk, (f) => f.factor !== 'document_type' || f.value === submitted?.type, false) : null,
+    documents: mineDocs.map((d) => documentView(d, false)),
+    activity: [
+      ...activityFrom({
+        runs: mineRuns, audit, scores: POLICY.shareRiskScore,
+        keepComment: (c) => (rel.comments || []).some((x) => x.commentId === c.commentId),
+      }),
+      ...(rel.comments || []).filter((c) => c.text && !audit.some((e) => e.userComment?.commentId === c.commentId))
+        .map((c) => ({ type: 'comment', at: c.at, commentId: c.commentId, text: c.text, author: c.author, action: null })),
+      ...reused.map((v) => ({ type: 'workflow', at: v.startedAt, workflow: v.workflow, result: v.result, ref: v.ref, riskLevel: v.riskLevel, riskScore: v.riskScore })),
+      ...(rel.uploads || []).map((u) => ({ type: 'document', at: u.at, text: u.label })),
+      { type: 'event', at: rel.createdAt, text: rel.kind === 'business' ? 'Business submitted for verification' : 'Submitted for verification' },
+      ...(rel.idvRequests || []).map((q) => ({ type: 'event', at: q.at, text: 'ID check link sent' })),
+    ].sort((a, b) => Date.parse(b.at) - Date.parse(a.at)),
+    history: [
+      ...keyEvents(audit.filter((e) => mineIds.has(e.workflowExecutionId))),
+      ...platformEvents(rel),
+    ].sort((a, b) => Date.parse(b.at) - Date.parse(a.at)),
+  };
+}
+
+const findClient = (intermediary, handle) => {
+  const rel = store.find(intermediary.id, handle);
+  if (!rel || rel.kind === 'related') throw new ClientError(404, 'NOT_FOUND', 'No such client.');
+  return rel;
+};
+const peopleOf = (biz) => store.allRelationships().filter((r) => r.kind === 'related' && r.intermediaryId === biz.intermediaryId && r.businessHandle === biz.handle && !r.removedAt);
+
+export async function intermediaryFile(intermediary, handle) {
+  const rel = findClient(intermediary, handle);
+  store.disclose(intermediary.id, handle, ['verifications', 'risk', 'documents', 'history'], 'file');
+  const id = (r) => (POLICY.shareEntityId ? { entityId: r.entityId } : {});
+  if (rel.kind !== 'business') return { kind: 'INDIVIDUAL', handle, name: rel.name, ...id(rel), ...(await scopedFile(rel, 'INDIVIDUAL')) };
+  const [own, people] = await Promise.all([
+    scopedFile(rel, 'ORGANIZATION'),
+    Promise.all(peopleOf(rel).map(async (p) => ({ personHandle: p.handle, name: p.name, role: p.roleLabel, status: p.status, ...id(p), ...(await scopedFile(p, 'INDIVIDUAL')) }))),
+  ]);
+  return { kind: 'BUSINESS', handle, name: rel.name, ...id(rel), ...own, people };
+}
+
+/** Stream one attachment, after checking the document is in this intermediary's file. */
+export async function intermediaryAttachment(intermediary, handle, documentId, attachmentId, personHandle) {
+  const client = findClient(intermediary, handle);
+  const rel = personHandle ? peopleOf(client).find((p) => p.handle === personHandle) : client;
+  if (!rel) throw new ClientError(404, 'NOT_FOUND', 'No such person.');
+  const entityType = rel.kind === 'business' ? 'ORGANIZATION' : 'INDIVIDUAL';
+  const file = await scopedFile(rel, entityType);
+  if (!file.documents.some((d) => d.documentId === documentId)) throw new ClientError(404, 'NOT_FOUND', 'No such document.');
+  return attachment(rel.entityId, documentId, attachmentId, entityType);
+}
+
+async function attachment(entityId, documentId, attachmentId, entityType) {
+  const d = await frankie.getDocumentData(entityId, documentId, entityType);
+  const doc = d.document || d;
+  const a = (doc.attachments || []).find((x) => x.attachmentId === attachmentId);
+  if (!a?.data?.base64) throw new ClientError(404, 'NOT_FOUND', 'That file is not available.');
+  return { mimeType: a.mimeType || 'application/octet-stream', filename: a.filename || attachmentId, bytes: Buffer.from(a.data.base64, 'base64') };
+}
+
+// ── adding to the file ──────────────────────────────────────────────
+const MAX_BYTES = 6 * 1024 * 1024;
+
+/** Attach a document (and its file) to a client's record, or to one person behind a business. */
+export async function addClientDocument(intermediary, client, body) {
+  const rel = body.person ? peopleOf(client).find((p) => p.handle === body.person) : client;
+  if (!rel) throw new ClientError(404, 'NOT_FOUND', 'No such person.');
+  const entityType = rel.kind === 'business' ? 'ORGANIZATION' : 'INDIVIDUAL';
+  const type = String(body.type || 'OTHER').toUpperCase();
+  const label = DOC_TYPE[type] || type.replace(/_/g, ' ').toLowerCase();
+  const attachments = [];
+  if (body.file?.base64) {
+    if (Buffer.byteLength(body.file.base64, 'base64') > MAX_BYTES) throw new ClientError(413, 'TOO_LARGE', 'Files can be up to 6 MB.');
+    attachments.push({ filename: body.file.filename, mimeType: body.file.mimeType, data: { base64: body.file.base64 } });
+  }
+  const created = await frankie.addDocument(rel.entityId, { type: SENT_AS[type] || type, class: 'SUPPORTING', country: 'AUS', attachments }, entityType, intermediary.id);
+  const documentId = created.document?.documentId;
+  store.update(rel, {
+    documentIds: [...(rel.documentIds || []), documentId].filter(Boolean),
+    uploads: [...(rel.uploads || []), { at: new Date().toISOString(), label: body.file?.filename ? `${label} (${body.file.filename})` : label }],
+  });
+  return { documentId, label, rel };
+}
+
+/** A one-time link for the client (or a person behind a business) to photograph their ID and take a selfie. */
+export async function sendIdvLink(intermediary, handle, personHandle) {
+  const client = findClient(intermediary, handle);
+  const rel = personHandle ? peopleOf(client).find((p) => p.handle === personHandle) : client;
+  if (!rel || rel.kind === 'business') throw new ClientError(400, 'NOT_A_PERSON', 'ID verification is for a person. Choose one of the people behind the business.');
+  const r = await frankie.hostedIdvUrl(rel.entityId, IDV_FLOW);
+  store.update(rel, { idvRequests: [...(rel.idvRequests || []), { at: new Date().toISOString() }] });
+  store.disclose(intermediary.id, handle, ['idvUrl'], 'idv-link');
+  return { url: r.url, expiresAt: r.urlExpiry || null, for: rel.name };
+}
+
+// ── the platform's file ─────────────────────────────────────────────
+const holderLabel = (owners) => (!owners?.length ? 'Outside the platform' : owners.map((o) => (o === 'platform' ? 'Platform'
+  : `${byId[o.intermediaryId]?.name}${o.kind === 'related' ? ` (${String(o.roleLabel).toLowerCase()})` : ''}`)).join(', '));
+
+export async function platformFile(entityId) {
+  const rels = relsOn(entityId);
+  if (!rels.length) throw new ClientError(404, 'NOT_FOUND', 'No such record on the network.');
+  const entityType = rels[0].kind === 'business' ? 'ORGANIZATION' : 'INDIVIDUAL';
+  const { profile, runs, latestRisk, audit, docs } = await loadRecord(entityId, entityType);
+  const ownerByRun = Object.fromEntries(runs.map((w) => [w.workflowExecutionId, ownersOf(w, rels)]));
+  const uploader = (d) => rels.find((r) => (r.documentIds || []).includes(d.documentId));
+  return {
+    entityId, entityType, name: rels[0].name, state: profile.state,
+    verifications: runs.map((w) => ({ ...verification(w, true), for: holderLabel(ownerByRun[w.workflowExecutionId]) })),
+    risk: riskFrom(runs, latestRisk, () => true, true),
+    documents: docs.map((d) => ({ ...documentView(d, true), addedBy: uploader(d) ? byId[uploader(d).intermediaryId]?.name : null })),
+    activity: [
+      ...activityFrom({ runs, audit, scores: true, labelFor: (id) => holderLabel(ownerByRun[id]) }),
+      ...rels.flatMap((r) => (r.reuses || []).map((u) => ({
+        type: 'reuse', at: u.at, workflow: u.workflow, sourceWorkflow: u.sourceWorkflow, sourceRef: u.sourceExecutionId,
+        for: holderLabel([r]), source: holderLabel(ownerByRun[u.sourceExecutionId]),
+      }))),
+      ...audit.filter((e) => e.functionName === 'CreateDocuments').map((e) => {
+        const by = rels.find((r) => (r.documentIds || []).includes(e.supplementaryData?.documentId));
+        return { type: 'document', at: e.timestamp, text: (DOC_TYPE[e.supplementaryData?.documentType] || 'Document') + ' added', for: by ? byId[by.intermediaryId]?.name : null };
+      }),
+    ].sort((a, b) => Date.parse(b.at) - Date.parse(a.at)),
+    history: audit.map((e) => ({
+      at: e.timestamp, source: e.source || e.channel || 'FrankieOne', type: e.type, text: auditText(e), result: RESULT[e.status] || e.status || null,
+      workflow: e.workflowName || null, for: e.workflowExecutionId ? holderLabel(ownerByRun[e.workflowExecutionId]) : null,
+    })),
+    holders: rels.map((r) => ({ intermediary: byId[r.intermediaryId]?.name, clientRef: r.clientRef, handle: r.handle, role: r.roleLabel || null, removedAt: r.removedAt || null })),
+  };
+}
+
+export const platformAttachment = (entityId, documentId, attachmentId) => {
+  const rel = relsOn(entityId)[0];
+  if (!rel) throw new ClientError(404, 'NOT_FOUND', 'No such record on the network.');
+  return attachment(entityId, documentId, attachmentId, rel.kind === 'business' ? 'ORGANIZATION' : 'INDIVIDUAL');
+};
+
+// ── comments ────────────────────────────────────────────────────────
+/** An intermediary comments on its client (or one person behind a business). Comments are immutable. */
+export async function addClientComment(intermediary, handle, body) {
+  const text = String(body?.text || '').trim();
+  if (!text) throw new ClientError(400, 'EMPTY', 'Write a comment first.');
+  if (text.length > 2000) throw new ClientError(400, 'TOO_LONG', 'Comments can be up to 2,000 characters.');
+  const client = findClient(intermediary, handle);
+  const rel = body.person ? peopleOf(client).find((p) => p.handle === body.person) : client;
+  if (!rel) throw new ClientError(404, 'NOT_FOUND', 'No such person.');
+  const r = await frankie.addComment(rel.entityId, rel.kind === 'business' ? 'ORGANIZATION' : 'INDIVIDUAL', text, intermediary.id, intermediary.name);
+  // Kept so the comment shows at once: FrankieOne's audit log takes a few seconds to include it.
+  store.update(rel, { comments: [...(rel.comments || []), { commentId: r.comment?.commentId, text, author: intermediary.name, at: new Date().toISOString() }] });
+  return { commentId: r.comment?.commentId };
+}
+
+/** The platform's compliance team comments on a record. */
+export async function addPlatformComment(entityId, text) {
+  const rel = relsOn(entityId)[0];
+  if (!rel) throw new ClientError(404, 'NOT_FOUND', 'No such record on the network.');
+  if (!String(text || '').trim()) throw new ClientError(400, 'EMPTY', 'Write a comment first.');
+  const r = await frankie.addComment(entityId, rel.kind === 'business' ? 'ORGANIZATION' : 'INDIVIDUAL', String(text).trim().slice(0, 2000), 'platform', 'Platform compliance');
+  return { commentId: r.comment?.commentId };
+}
+
+// ── duplicate decisions: both records, side by side ─────────────────
+const fmtAddress = (a) => (a ? [
+  [a.unitNumber && `${a.unitNumber.replace(/^U\s*/i, 'Unit ')},`, a.streetNumber, a.streetName, a.streetType].filter(Boolean).join(' '),
+  [a.locality, a.subdivision, a.postalCode].filter(Boolean).join(' '),
+].filter(Boolean).join(', ') : null);
+
+function identityDoc(d) {
+  const sup = d.supplementaryData || {};
+  const type = d.type || sup.type;
+  return {
+    documentId: d.documentId,
+    type: DOC_TYPE[type] || (type || 'Document').replace(/_/g, ' ').toLowerCase(),
+    number: d.primaryIdentifier || null,
+    cardNumber: d.secondaryIdentifier || null,
+    state: d.subdivision || null,
+    country: d.country || null,
+    expiry: d.expiryDate?.normalized || null,
+    ...(type === 'NATIONAL_HEALTH_ID' ? { colour: { G: 'Green', B: 'Blue', Y: 'Yellow' }[d.subtype] || d.subtype, position: sup.reference, nameOnCard: sup.nameOnCardLine1 } : {}),
+    addedAt: d.createdAt,
+    attachments: (d.attachments || []).map((a) => ({ attachmentId: a.attachmentId, filename: a.filename, mimeType: a.mimeType, side: a.side || null })),
+  };
+}
+
+/** One person's record, as compliance needs it to decide whether two records are the same person. */
+async function personProfile(entityId) {
+  const [rec, docs, sp] = await Promise.all([
+    frankie.getIndividual(entityId).catch(() => ({})),
+    frankie.listDocuments(entityId).catch(() => ({})),
+    frankie.getServiceProfile(entityId).catch(() => ({})),
+  ]);
+  const i = rec.individual || {};
+  const rels = relsOn(entityId);
+  const runs = (sp.serviceProfile?.workflowSummaries || []).filter((w) => w.workflowName !== DUPLICATE_WORKFLOW && w.lifecyclePhase !== 'MONITORING')
+    .sort((a, b) => Date.parse(b.startedAt || 0) - Date.parse(a.startedAt || 0));
+  const allDocs = Object.entries(docs).filter(([k, v]) => Array.isArray(v) && k !== 'requestId').flatMap(([, v]) => v);
+  return {
+    entityId,
+    name: i.name?.displayName || [i.name?.givenName, i.name?.middleName, i.name?.familyName].filter(Boolean).join(' '),
+    dateOfBirth: i.dateOfBirth?.normalized || null,
+    address: fmtAddress((i.addresses || []).find((a) => a.status === 'CURRENT') || i.addresses?.[0]),
+    email: i.emailAddresses?.[0]?.email || null,
+    phone: i.phoneNumbers?.[0]?.number || null,
+    recordCreated: i.createdAt || null,
+    firstOnboarded: rels.map((r) => r.createdAt).sort()[0] || i.createdAt || null,
+    heldBy: rels.filter((r) => !r.removedAt).map((r) => ({ intermediary: byId[r.intermediaryId]?.name, clientRef: r.clientRef, since: r.createdAt, role: r.roleLabel || null })),
+    documents: allDocs.filter((d) => d.class === 'IDENTITY' || d.primaryIdentifier || d.attachments?.length).map(identityDoc),
+    latestRun: runs[0] ? { workflow: runs[0].workflowName, result: RESULT[runs[0].status] || runs[0].status, at: runs[0].endedAt || runs[0].startedAt, risk: band(runs[0].riskAssessment?.workflowRiskLevel) } : null,
+  };
+}
+
+/** Any two person records side by side, for a decision already made (records may since be merged). */
+export async function compareRecords(a, b) {
+  const ok = (id) => /^[0-9a-f-]{36}$/.test(id || '') && store.allRelationships().some((r) => r.entityId === id || r.mergedFrom === id)
+    || store.merges().some((m) => m.retiredId === id || m.survivorId === id) || store.reviews().some((r) => r.newEntityId === id || r.candidates.some((c) => c.entityId === id));
+  if (!ok(a) || !ok(b)) throw new ClientError(404, 'NOT_FOUND', 'Those records are not on the platform’s network.');
+  const [submitted, existing] = await Promise.all([personProfile(a), personProfile(b)]);
+  return { kind: 'person', submitted, candidates: [existing] };
+}
+
+/** A held duplicate, with the full record on each side. */
+export async function reviewComparison(reviewId) {
+  const review = store.review(reviewId);
+  if (!review) throw new ClientError(404, 'NOT_FOUND', 'No such review.');
+  if (review.kind === 'business') return { kind: 'business', sides: null };
+  const [submitted, ...candidates] = await Promise.all([review.newEntityId, ...review.candidates.map((c) => c.entityId)].map(personProfile));
+  return { kind: 'person', submitted, candidates };
+}

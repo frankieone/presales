@@ -11,6 +11,7 @@ A collection of demo applications built with FrankieOne's identity verification 
 | **EmbeddedOneSDK** | Embedded Split Flow demo using FrankieOne's OneSDK | Vite, React | 5173 |
 | **KYB POC V1 ACME** | KYB (Know Your Business) proof-of-concept with entity workflow visualization | Next.js, React Flow, Tailwind CSS | 6513 |
 | **KYB V2 ACME** | Enhanced KYB demo with entity workflow visualization | Next.js, React Flow, Zustand, Tailwind CSS | 6816 |
+| **Middleware / Onboarding as a Service** | A platform layer that runs one FrankieOne account for many intermediaries, each with its own scoped console | Node.js, Vite, React, Tailwind CSS | 8100, 8101 |
 | **ANZ** | Entity data samples and fetch scripts | Node.js scripts | — |
 
 ## Getting Started
