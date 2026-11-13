@@ -1,0 +1,10 @@
+{
+  "name": "fraud-demo-super",
+  "private": true,
+  "description": "Starts the shared fraud demo (../app) as the Superannuation example on port 8094.",
+  "scripts": {
+    "setup": "npm --prefix ../app install",
+    "dev": "npm --prefix ../app run super",
+    "test": "npm --prefix ../app test"
+  }
+}
