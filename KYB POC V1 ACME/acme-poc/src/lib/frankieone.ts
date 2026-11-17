@@ -106,31 +106,16 @@ function getHeaders(): Record<string, string> {
   return headers;
 }
 
-async function getBackendToken(): Promise<string> {
-  const backendUrl = FRANKIE_API_BASE_URL.replace(/\/compliance\/v1\.2\/?$/, '').replace('api.kycaml', 'backend.kycaml');
-  const credentials = Buffer.from(`${FRANKIE_CUSTOMER_ID}:${FRANKIE_API_KEY}`).toString('base64');
-
-  const res = await fetch(`${backendUrl}/auth/v2/machine-session`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'authorization': `machine ${credentials}`,
-    },
-    body: JSON.stringify({ permissions: { preset: 'smart-ui' } }),
-  });
-
-  const data = await res.json();
-  return data.token;
-}
-
+// Public v2 Lookup organizations API. Replaces the BFF /data/v2/businesses endpoint,
+// which customers should not call directly.
 export async function searchAustralianBusiness(search: string) {
-  const backendUrl = FRANKIE_API_BASE_URL.replace(/\/compliance\/v1\.2\/?$/, '').replace('api.kycaml', 'backend.kycaml');
-  const token = await getBackendToken();
-  const url = `${backendUrl}/data/v2/businesses?search=${encodeURIComponent(search)}`;
-
-  const res = await fetch(url, {
-    method: 'GET',
-    headers: { 'authorization': token },
+  const res = await fetch(`${FRANKIE_API_V2_BASE_URL}/v2/organizations/lookup`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({
+      region: { country: 'AUS' },
+      organizationName: search,
+    }),
   });
 
   const data = await res.json();

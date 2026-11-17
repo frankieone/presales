@@ -12,32 +12,45 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Country is required' }, { status: 400 });
     }
 
-    // Australian name searches use the ABR lookup via backend API
+    // Australian name searches use the v2 Lookup organizations API
     if (isAustralia(country) && organisationName) {
       const { data, status } = await searchAustralianBusiness(organisationName);
 
-      console.log('[ABR Search] Status:', status, 'Raw keys:', JSON.stringify(Object.keys(data || {})));
-      console.log('[ABR Search] First result:', JSON.stringify(Array.isArray(data) ? data[0] : 'none'));
+      console.log('[AU Lookup] Status:', status, 'Matches:', data?.matchedOrganizations?.length ?? 0);
 
       if (status !== 200) {
         return NextResponse.json(
-          { error: data?.errorMsg || 'Search failed' },
+          { error: data?.errorMsg || data?.errorCode || 'Search failed' },
           { status }
         );
       }
 
-      // ABR returns an array of businesses
-      const businesses = Array.isArray(data) ? data : [];
-      const results: BusinessSearchResult[] = businesses.map((b: Record<string, unknown>) => ({
-        code: (b.abn as string) || (b.acn as string) || '',
-        companyId: (b.abn as string) || (b.acn as string) || '',
-        name: (b.name as string) || ((b.mainNames as string[])?.[0]) || '',
-        address: [b.state, b.postalCode].filter(Boolean).join(' '),
-        legalStatus: b.isActive ? 'Active' : 'Inactive',
-        source: 'ABR',
-      }));
+      // v2 returns { matchedOrganizations: [...], queryDetails, requestId }
+      type MatchedOrganization = {
+        name?: { name?: string };
+        registrationDetails?: Array<{ registrationNumber?: string; registrationNumberType?: string }>;
+        addresses?: Array<{ unstructuredLongForm?: string; subdivision?: string; postalCode?: string }>;
+        status?: { normalized?: { code?: string }; unstructured?: { description?: string } };
+        type?: { description?: string };
+      };
+      const orgs: MatchedOrganization[] = data?.matchedOrganizations || [];
+      const results: BusinessSearchResult[] = orgs.map((org) => {
+        const regNumber = (type: string) =>
+          org.registrationDetails?.find((r) => r.registrationNumberType === type)?.registrationNumber;
+        const code = regNumber('ABN') || regNumber('ACN') || '';
+        const address = org.addresses?.[0];
+        return {
+          code,
+          companyId: code,
+          name: org.name?.name || '',
+          address: address?.unstructuredLongForm || [address?.subdivision, address?.postalCode].filter(Boolean).join(' '),
+          legalStatus: org.status?.normalized?.code === 'ACTV' ? 'Active' : org.status?.unstructured?.description || 'Inactive',
+          legalForm: org.type?.description,
+          source: 'ABR',
+        };
+      });
 
-      return NextResponse.json({ results });
+      return NextResponse.json({ results, requestId: data?.requestId });
     }
 
     // International search for non-AU countries
