@@ -10,7 +10,7 @@ All API calls include these headers:
 - `api_key: {api_key}`
 - `X-Frankie-CustomerChildID: {child_id}` (optional, if multi-tenant)
 
-The Australian business search (Step 1b) uses a separate backend token obtained via machine session auth.
+The Australian business search (Step 1b) sends the same headers to the v2 API.
 
 ---
 
@@ -35,30 +35,21 @@ Returns a list of matching businesses with name, registration code, jurisdiction
 
 ### Step 1b: Australian Business Search
 
-Uses the backend data API (not the compliance API).
+Uses the v2 Lookup organizations API (not the compliance API).
 
-First, obtain a machine session token:
-
-**`POST {backend_url}/auth/v2/machine-session`**
-
-Headers: `authorization: machine {base64(customer_id:api_key)}`
+**`POST {v2_base_url}/v2/organizations/lookup`**
 
 Request body:
 ```json
 {
-  "permissions": { "preset": "smart-ui" }
+  "region": { "country": "AUS" },
+  "organizationName": "Acme Pty Ltd"
 }
 ```
 
-Returns: `{ "token": "..." }`
+To search by number instead, send `"organizationNumber": { "registrationNumber": "89060748156", "registryCode": "ABN" }`.
 
-Then search:
-
-**`GET {backend_url}/data/v2/businesses?search={query}`**
-
-Headers: `authorization: {token}`
-
-Returns a list of Australian businesses matching the search query (by name, ABN, or ACN).
+Returns `matchedOrganizations`. Each match has a `name`, `registrationDetails` (ABN and ACN), `status`, `type` and an `organizationToken`.
 
 ---
 
@@ -338,7 +329,7 @@ Request body:
 
 ```
 1. Search Business
-   POST /business/international/search  OR  GET /data/v2/businesses?search=...
+   POST /business/international/search  OR  POST /v2/organizations/lookup (AU)
 
 2. User selects business from results
 
