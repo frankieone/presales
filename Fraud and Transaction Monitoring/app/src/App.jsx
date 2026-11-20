@@ -15,6 +15,7 @@ import Payments from './pages/Payments';
 import Reset from './pages/Reset';
 import DeviceCheck from './pages/DeviceCheck';
 import MemberConfirm from './pages/MemberConfirm';
+import StepUpVerify from './pages/StepUpVerify';
 
 function ProtectedRoute({ children }) {
   const { user } = useAuth();
@@ -43,6 +44,8 @@ export default function App() {
               <Route path="/reset" element={<Reset />} />
               {/* Opened on a related person's own phone, from their link. */}
               <Route path="/m/:entityId" element={<MemberConfirm />} />
+              {/* Step-up ID check for a held payment: device first, then hosted ID capture. */}
+              <Route path="/v/:entityId" element={<StepUpVerify />} />
               <Route path="/device-check/:entityId" element={<DeviceCheck />} />
 
               <Route path="/application" element={<ProtectedRoute><Application /></ProtectedRoute>} />

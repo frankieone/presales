@@ -3,8 +3,8 @@ import { ArrowUpRight, CheckCircle, AlertCircle, Loader2, Send, ScanFace } from 
 import QRCode from 'qrcode';
 import { useAuth } from '../context/AuthContext';
 import { storageKey, vertical } from '../config';
-import { generateMemberIdvUrl, recordTransaction } from '../services/api';
-import { registerDeviceSession } from '../services/journey';
+import { recordTransaction } from '../services/api';
+import { registerDeviceSession, stepUpLink } from '../services/journey';
 
 /**
  * A payment out of the customer's account, for showing transaction
@@ -62,7 +62,8 @@ export default function Payments() {
       setHistory(next);
       try { localStorage.setItem(HISTORY, JSON.stringify(next)); } catch { /* private mode */ }
       if (needsId) {
-        const { url } = await generateMemberIdvUrl(user.userId);
+        // Our own page, not the hosted link: it collects the device first.
+        const url = stepUpLink(user.userId);
         const qr = await QRCode.toDataURL(url, { margin: 1, width: 220 });
         setStepUp({ url, qr, amount: value, payee: to });
       } else {

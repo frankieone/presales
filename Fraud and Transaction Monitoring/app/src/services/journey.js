@@ -120,5 +120,15 @@ export function memberLink(entityId, fundId) {
   return `${window.location.protocol}//${host}${port}/m/${entityId}?f=${fundId}`;
 }
 
+/**
+ * The step-up ID check for a held payment, on the LAN address so the QR code
+ * works from a phone. Collects the device before the hosted ID capture.
+ */
+export function stepUpLink(entityId) {
+  const host = import.meta.env.VITE_LAN_HOST || window.location.hostname;
+  const port = window.location.port ? `:${window.location.port}` : '';
+  return `${window.location.protocol}//${host}${port}/v/${entityId}`;
+}
+
 /** The placeholder a fund carries until its name arrives with the application. */
 export const PENDING_FUND_NAME = 'PENDING APPLICATION';
