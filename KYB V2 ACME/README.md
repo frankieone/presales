@@ -7,7 +7,7 @@ A Next.js proof-of-concept for KYB (Know Your Business) onboarding using the Fra
 ### 1. Install dependencies
 
 ```bash
-pnpm install   # or: npm install
+pnpm install
 ```
 
 This demo is set up for pnpm 11 (Node 22.13 or newer; `npm install` also works if you copy it into your own project).
@@ -30,7 +30,7 @@ Contact your FrankieOne representative to obtain your API credentials.
 ### 3. Run the development server
 
 ```bash
-pnpm run dev   # or: npm run dev
+pnpm run dev
 ```
 
 The app will be available at [http://localhost:3000](http://localhost:3000).

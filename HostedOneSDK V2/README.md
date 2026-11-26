@@ -51,10 +51,10 @@ docker run -p 3000:3000 --env-file .env hosted-onesdk
 ## Local Development (without Docker)
 
 ```bash
-pnpm install        # or: npm install
+pnpm install
 cp env.example .env.local
 # Edit .env.local with your credentials
-pnpm run dev        # or: npm run dev
+pnpm run dev
 ```
 
 The repository is set up for pnpm 11 (Node 22.13 or newer; pnpm 10 or later
