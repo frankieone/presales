@@ -19,9 +19,11 @@ Each project is self-contained with its own dependencies. To run a project:
 
 ```bash
 cd "<project-folder>"
-npm install
-npm run dev
+pnpm install
+pnpm run dev
 ```
+
+The projects use pnpm 11 (Node 22.13 or newer). pnpm 10 or later reads each project's `packageManager` field and runs the pinned version; otherwise `npm install -g pnpm@11.28.13`. `npm install` still works if you copy a demo into your own project. Each project has a 7-day release cooldown in its `pnpm-workspace.yaml`.
 
 ### Environment Variables
 

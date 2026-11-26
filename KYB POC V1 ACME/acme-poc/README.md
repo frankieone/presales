@@ -7,8 +7,10 @@ A proof-of-concept demonstrating ACME business onboarding with FrankieOne KYB/KY
 ### 1. Install dependencies
 
 ```bash
-npm install
+pnpm install
 ```
+
+This demo is set up for pnpm 11 (Node 22.13 or newer; `npm install` also works if you copy it into your own project).
 
 ### 2. Configure credentials
 
@@ -30,7 +32,7 @@ FRANKIE_API_BASE_URL=https://api.kycaml.uat.frankiefinancial.io/compliance/v1.2
 ### 3. Run the dev server
 
 ```bash
-npm run dev
+pnpm run dev
 ```
 
 The app will be available at [http://localhost:3000](http://localhost:3000).

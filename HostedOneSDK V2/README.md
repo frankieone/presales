@@ -51,11 +51,15 @@ docker run -p 3000:3000 --env-file .env hosted-onesdk
 ## Local Development (without Docker)
 
 ```bash
-npm install
+pnpm install
 cp env.example .env.local
 # Edit .env.local with your credentials
-npm run dev
+pnpm run dev
 ```
+
+The repository is set up for pnpm 11 (Node 22.13 or newer; pnpm 10 or later
+reads `packageManager` and runs the pinned version, or `npm install -g pnpm@11.28.13`).
+`npm install` also works if you copy the demo into your own project.
 
 The dev server runs on port 4568 by default.
 

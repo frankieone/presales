@@ -5,4 +5,5 @@ node_modules
 .DS_Store
 *.pem
 npm-debug.log*
+.pnpm-debug.log*
 .git
