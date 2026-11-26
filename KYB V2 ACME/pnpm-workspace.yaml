@@ -1,0 +1,8 @@
+minimumReleaseAge: 10080 # 7 days, in minutes
+minimumReleaseAgeStrict: true
+minimumReleaseAgeExclude:
+  - '@frankieone/*'
+overrides:
+  postcss: 8.5.29 # keep in step with package.json overrides (npm users)
+allowBuilds:
+  unrs-resolver: false # install script only checks the prebuilt napi binary pnpm already installs; build and lint pass without it
